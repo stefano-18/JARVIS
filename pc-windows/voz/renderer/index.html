@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JARVIS HUD Wallpaper</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+  <div id="hud-container">
+    <!-- Mic Level Bar -->
+    <div id="micLevelWrap">
+      <div id="micLevelLabel">MIC</div>
+      <div id="micLevelBar"><div id="micLevelFill"></div></div>
+      <div id="micDb">0</div>
+    </div>
+
+    <!-- 3D Reactor Sphere -->
+    <div id="canvas-container"></div>
+
+    <!-- Top Left HUD Panel -->
+    <div class="hud-panel top-left">
+      <div id="clock">00:00:00</div>
+      <div id="date">CARGANDO FECHA...</div>
+      <div class="status-indicator"><span class="dot green"></span> JARVIS CORE: CONECTADO</div>
+    </div>
+
+    <!-- Top Right HUD Panel -->
+    <div class="hud-panel top-right">
+      <div class="telemetry-item">
+        <span>ESTADO RED:</span> <strong id="net-status">LAN 1000 Mbps</strong>
+      </div>
+      <div class="telemetry-item">
+        <span>SERVIDOR:</span> <strong>{{PORTATIL_IP}}:8765</strong>
+      </div>
+      <div class="telemetry-item">
+        <span>MODO:</span> <strong>AUTOMÁTICO 24/7</strong>
+      </div>
+    </div>
+
+    <!-- Bottom Subtitles Panel -->
+    <div class="hud-panel bottom">
+      <div id="subtitle">JARVIS en línea. Esperando comando de voz ("Hey JARVIS")...</div>
+    </div>
+
+    <!-- Holographic Map Overlay -->
+    <div id="mapOverlay" class="hidden">
+      <div class="map-header">
+        <span id="mapTitle">MAPA HOLOGRÁFICO EN TIEMPO REAL</span>
+        <button id="closeMapBtn">✕</button>
+      </div>
+      <div id="map"></div>
+    </div>
+
+    <!-- Bottom Right System Panel (Fase3: solo lectura, sin micro, click-through) -->
+    <div class="hud-panel bottom-right">
+      <div class="telemetry-item"><span>CONEXIÓN:</span> <strong id="sys-conn">…</strong></div>
+      <div class="telemetry-item"><span>ÚLTIMO:</span> <strong id="sys-last">—</strong></div>
+      <div class="telemetry-item"><span>MODELO:</span> <strong id="sys-model">—</strong></div>
+      <div class="telemetry-item"><span>OLLAMA:</span> <strong id="sys-ollama">…</strong></div>
+    </div>
+  </div>
+
+  <script src="logo3d.js"></script>
+  <script src="hud.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+[Unit]
+Description=JARVIS: agenda y tecnico (recordatorios, silencio, resumen, copias, autotest)
+After=network-online.target
+
+[Service]
+ExecStart=%h/jarvis2/.venv/bin/python %h/jarvis2/scripts/jx_agenda.py
+Restart=always
+RestartSec=15
+Nice=10
+
+[Install]
+WantedBy=default.target

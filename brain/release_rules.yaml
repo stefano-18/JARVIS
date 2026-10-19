@@ -1,0 +1,294 @@
+# Reglas declarativas de make_release.py (release compartible, 1 commit).
+# - excluir: rutas/prefijos a no exportar (relativos a la raíz).
+# - sustituir: reemplazos EXACTOS (buscar debe aparecer `veces`, si no FAIL).
+
+# - prohibido: regex que deben dar 0 coincidencias tras transformar (FAIL si no).
+# - gitleaks_permitido: hallazgos ya triados como sintéticos (fichero + regla).
+
+release_dir: "{{HOME}}/jarvis2-release"
+clean_test_dir: "{{HOME}}/jarvis-clean-test"
+pc_zip: "_incoming/agent_pc.zip"
+
+excluir:
+  - ".git/"
+  - "_incoming/agent_pc.zip"
+  - "_incoming/agent_pc/"
+  - ".venv/"
+  - ".venv-test/"
+  - "__pycache__/"
+  - ".pytest_cache/"
+  - "data/"
+  - "logs/"
+  - "models/"
+  - "vaults/"
+  - "*_jarvis_trash/"
+  - ".env"
+  - "docs/ajustes_energia_backup.txt"
+  - "docs/powercfg_query_SCHEME_CURRENT.txt"
+  - "docs/NOTAS_409_OPENCLAW.md"
+  - "scripts/set_telegram_token.ps1"
+  - "scripts/ajustes_energia_admin.ps1"
+  - "scripts/ajustes_energia_admin.bat"
+  - "scripts/make_release.py"
+  - "scripts/release_rules.yaml"
+  - "scripts/release_integracion.md"
+  - "scripts/release_verify_sync.py"
+  - "scripts/publish.ps1"
+  - "core/restart.py"
+
+sustituir:
+  - archivo: "interface/acl.py"
+    buscar: |2
+      # Respaldo legacy V1 (misma prioridad que los seeds, en último lugar).
+      V1_LAST_CHAT = Path(r"{{HOME}}\Jarvis\logs\last_chat_id.txt")
+    reemplazo: ""
+
+  - archivo: "interface/acl.py"
+    buscar: |2
+          for p in list(SEED_FILES) + [V1_LAST_CHAT]:
+              try:
+                  v = Path(p).read_text(encoding="utf-8").strip().split()[0]
+                  if v.isdigit():
+                      origin = "v1-legacy" if Path(p) == V1_LAST_CHAT \
+                          else str(p)
+                      return {int(v)}, origin
+    reemplazo: |2
+          for p in list(SEED_FILES):
+              try:
+                  v = Path(p).read_text(encoding="utf-8").strip().split()[0]
+                  if v.isdigit():
+                      return {int(v)}, str(p)
+
+  - archivo: "interface/acl.py"
+    buscar: "Los seeds (`data/last_chat_id.txt`, legacy V1) son solo informativos"
+    reemplazo: "Los seeds (`data/` y `logs/last_chat_id.txt`) son solo informativos"
+
+  - archivo: "brain/briefing.py"
+    buscar: |2
+      LAST_CHAT = _JROOT / "data" / "last_chat_id.txt"
+      V1_LAST_CHAT = Path(r"{{HOME}}\Jarvis\logs\last_chat_id.txt")
+    reemplazo: |2
+      LAST_CHAT = _JROOT / "data" / "last_chat_id.txt"
+
+  - archivo: "brain/briefing.py"
+    buscar: |2
+          except Exception:
+              pass
+          for p in (LAST_CHAT, V1_LAST_CHAT):
+              try:
+                  v = p.read_text(encoding="utf-8").strip().split()[0]
+                  if v.isdigit():
+                      return int(v)
+              except Exception:
+                  continue
+          return None
+    reemplazo: |2
+          except Exception:
+              return None
+
+  - archivo: "scripts/check_briefing.py"
+    buscar: |2
+      - jarvis2 data/briefing.json ......... marca del nativo (fecha + intentos).
+      - jarvis2 logs/health.jsonl .......... aviso de salud (fecha + notified).
+      - jarvis2 logs/jarvis.log ............ lineas "briefing voice"/"motivo".
+      - V1 logs/scheduler.log .............. jobs morning_0755/briefing_0900.
+      - V2 logs/main.stderr.log ............ GOAL briefing con executed.
+      - Procesos ........................... pollers Telegram vivos (debe ser 1).
+    reemplazo: |2
+      - data/briefing.json ......... marca del nativo (fecha + intentos).
+      - logs/health.jsonl .......... aviso de salud (fecha + notified).
+      - logs/jarvis.log ............ lineas "briefing voice"/"motivo".
+      - Procesos ................... pollers Telegram vivos (debe ser 1).
+
+  - archivo: "scripts/check_briefing.py"
+    buscar: |2
+      ROME = ZoneInfo("Europe/Rome")
+      V1_SCHED = Path(r"{{HOME}}\Jarvis\logs\scheduler.log")
+      V2_MAIN = Path(r"{{HOME}}\Jarvis-v2\logs\main.stderr.log")
+    reemplazo: |2
+      ROME = ZoneInfo("Europe/Rome")
+
+  - archivo: "scripts/check_briefing.py"
+    buscar: |2
+      def v1_fires(day: str) -> list:
+          out = []
+          for line in _read(V1_SCHED).splitlines():
+              if day in line and ("morning_0755" in line or "briefing_0900" in line
+                                  or "Morning voice enviado" in line
+                                  or "Briefing voice enviado" in line):
+                  out.append(line[:160])
+          return out
+
+
+      def v2_fires(day: str) -> list:
+          out = []
+          for line in _read(V2_MAIN).splitlines():
+              if day in line and "briefing" in line.lower() and \
+                      ("executed': True" in line or '"executed": true' in line
+                       or "announce" in line.lower()):
+                  out.append(line[:160])
+          return out
+
+
+    reemplazo: ""
+
+  - archivo: "scripts/check_briefing.py"
+    buscar: |2
+                  if "telegram" in line.lower() and "listener" not in line.lower():
+                      found.append(line.strip()[:120])
+                  if "telegram_listener" in line:
+                      found.append("V1-LISTENER-VIVO: " + line.strip()[:120])
+    reemplazo: |2
+                  if "telegram_service" in line:
+                      found.append(line.strip()[:120])
+
+  - archivo: "scripts/check_briefing.py"
+    buscar: |2
+          v1 = v1_fires(day)
+          print(f"V1 scheduler disparos hoy: {len(v1)}")
+          v2 = v2_fires(day)
+          print(f"V2 briefing ejecutados hoy: {len(v2)}")
+          pl = pollers()
+    reemplazo: |2
+          pl = pollers()
+
+  - archivo: "scripts/check_briefing.py"
+    buscar: |2
+          if v1:
+              print(f"  - V1 disparó {len(v1)} vez/veces (debía estar muerto).")
+          if v2:
+              print("  - V2 ejecutó briefing (fase A debía bloquearlo).")
+          if len([p for p in pl if not p.startswith("V1-LISTENER")]) != 1:
+    reemplazo: |2
+          if len(pl) != 1:
+
+  - archivo: "tests/test_chat_target.py"
+    buscar: |2
+      def test_v1_tampoco_es_destino(monkeypatch, tmp_path):
+          monkeypatch.setenv("TELEGRAM_ALLOWED_CHAT_IDS", "11")
+          monkeypatch.setattr(ACL, "V1_LAST_CHAT", tmp_path / "v1.txt")
+          (tmp_path / "v1.txt").write_text("777\n", encoding="utf-8")
+          out = ACL.resolve_target_chat({})
+          assert out["chat_id"] == 11 and out["origin"] == "env"
+
+
+    reemplazo: ""
+
+  - archivo: "tests/test_health.py"
+    buscar: |2
+          monkeypatch.setattr(BR, "V1_LAST_CHAT", tmp_path / "tampoco.txt")
+    reemplazo: ""
+
+  - archivo: "tests/test_health.py"
+    buscar: |2
+          monkeypatch.setattr(_ACL, "V1_LAST_CHAT", tmp_path / "tampoco.txt")
+    reemplazo: ""
+
+  - archivo: "tests/conftest.py"
+    buscar: |2
+          monkeypatch.setattr(BR, "V1_LAST_CHAT",
+                              tmp_path / "v1_noexiste.txt")
+    reemplazo: ""
+
+  - archivo: "tests/conftest.py"
+    buscar: |2
+          monkeypatch.setattr(ACL, "V1_LAST_CHAT",
+                              tmp_path / "v1_noexiste.txt")
+    reemplazo: ""
+    veces: 1
+
+  - archivo: "tests/test_briefing_retry.py"
+    buscar: |2
+          monkeypatch.setattr(_ACL, "V1_LAST_CHAT", tmp_path / "m.txt")
+    reemplazo: ""
+
+  - archivo: "agent_pc/install_agent.ps1"
+    buscar: |2
+      param(
+        [Parameter(Mandatory = $true)][string]$SharedSecret,
+        [string]$HubHost = "",
+        [string]$DeviceId = "",
+        [string]$Roots = "%USERPROFILE%\JARVIS"
+      )
+    reemplazo: |2
+      param(
+        [string]$SharedSecret = "",
+        [string]$HubHost = "",
+        [string]$DeviceId = "",
+        [string]$Roots = "%USERPROFILE%\JARVIS",
+        [string]$ConfigFile = ""
+      )
+      # Si viene -ConfigFile (pc_agent_config.json del --export-pc-config),
+      # manda sobre los parámetros y se BORRA tras escribir el .env.
+      if ($ConfigFile -ne "") {
+        $cfg = Get-Content -LiteralPath $ConfigFile -Encoding UTF8 |
+          ConvertFrom-Json
+        if ($cfg.SECRET) { $SharedSecret = $cfg.SECRET }
+        if ($cfg.HUB_HOST) { $HubHost = $cfg.HUB_HOST }
+        if ($cfg.DEVICE_ID) { $DeviceId = $cfg.DEVICE_ID }
+      }
+      if ($SharedSecret -eq "") { throw "Falta -SharedSecret (o -ConfigFile con SECRET)." }
+
+  - archivo: "agent_pc/install_agent.ps1"
+    buscar: |2
+      Write-Output ".env escrito en UTF-8 sin BOM (secreto actualizado, no se muestra)."
+    reemplazo: |2
+      Write-Output ".env escrito en UTF-8 sin BOM (secreto actualizado, no se muestra)."
+      if ($ConfigFile -ne "" -and (Test-Path -LiteralPath $ConfigFile)) {
+        Remove-Item -LiteralPath $ConfigFile -Force
+        Write-Output "Fichero de configuración eliminado tras usarlo."
+      }
+
+  - archivo: "remote_agent/actions.py"
+    buscar: |2
+          # Fase 9 Computer Use (riesgos IDENTICOS a los manifiestos del PC).
+          # fn: stub local — en el laptop nunca se ejecuta (solo se envia jr_req
+          # al PC via pc_proxy); el PC usa su propia copia con fn reales.
+          {"name": "screen.capture", "params": {"monitor": "int?",
+                                                "max_width": "int?"},
+           "risk": "high", "timeout": 20, "module": "screen", "scope": "",
+           "fn": None},
+          {"name": "window.list", "params": {"limit": "int?"},
+           "risk": "low", "timeout": 15, "module": "window", "scope": "",
+           "fn": None},
+          {"name": "window.focus", "params": {"title": "str", "hwnd": "int?"},
+           "risk": "high", "timeout": 15, "module": "window", "scope": "",
+           "fn": None},
+          {"name": "window.minimize", "params": {"title": "str", "hwnd": "int?"},
+           "risk": "high", "timeout": 15, "module": "window", "scope": "",
+           "fn": None},
+          {"name": "window.maximize", "params": {"title": "str", "hwnd": "int?"},
+           "risk": "high", "timeout": 15, "module": "window", "scope": "",
+           "fn": None},
+          {"name": "window.move",
+           "params": {"title": "str", "hwnd": "int?", "x": "int", "y": "int",
+                      "w": "int?", "h": "int?"},
+           "risk": "high", "timeout": 20, "module": "window", "scope": "",
+           "fn": None},
+          {"name": "clipboard.read", "params": {},
+           "risk": "high", "timeout": 15, "module": "clipboard", "scope": "",
+           "fn": None},
+          {"name": "clipboard.write", "params": {"text": "str"},
+           "risk": "high", "timeout": 15, "module": "clipboard",
+           "scope": "clipboard", "fn": None},
+          {"name": "ui.click",
+           "params": {"x": "int", "y": "int", "button": "str?"},
+           "risk": "high", "timeout": 20, "module": "ui", "scope": "",
+           "fn": None},
+          {"name": "ui.keypress", "params": {"keys": "str"},
+           "risk": "high", "timeout": 20, "module": "ui", "scope": "",
+           "fn": None},
+
+    reemplazo: "@SYNC_FROM_PC"
+
+prohibido:
+  - "V1_LAST_CHAT"
+  - "v1-legacy"
+  - "{{WIN_USUARIO}}\\\\Jarvis\\\\"
+  - "{{WIN_USUARIO}}\\\\Jarvis-v2"
+  - "192\\.168\\.\\d+\\.\\d+"
+  - "C:\\\\Users\\\\{{WIN_USUARIO}}"
+
+gitleaks_permitido:
+  - {fichero: ".env.example", regla: "generic-api-key"}
+  - {fichero: "tests/test_policy.py", regla: "generic-api-key"}

@@ -1,0 +1,41 @@
+# claves y secretos
+.env
+.env.*
+!config/env.example
+*.key
+*token*
+*secret*
+clave.hash
+claves-apartadas*
+google-*.json
+auth.json
+# datos personales y de uso
+*.log
+*.jsonl
+audit*
+gasto*
+pronuncia_vistos.json
+correo.json
+recordatorios.json
+tareas.json
+propuesta.json
+mejoras.json
+ajustes.json
+nombres_pc.txt
+juegos_pc.txt
+boot_report.txt
+DAILY_REPORT.md
+# entornos y basura
+.venv/
+*venv*/
+__pycache__/
+.pytest_cache/
+voices/
+backups/
+*.bak*
+node_modules/
+claves-apartadas*
+firma.key
+*.lock
+pc-windows/voz/cache/
+voice_outbox.txt

@@ -1,0 +1,14 @@
+[Unit]
+Description=JARVIS hub 18765 (remote_agent)
+After=network-online.target
+Wants=network-online.target
+[Service]
+User={{USUARIO}}
+WorkingDirectory={{HOME}}/jarvis2
+ExecStart={{HOME}}/jarvis2/scripts/hub_service_linux.sh
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+[Install]
+WantedBy=multi-user.target

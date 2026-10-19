@@ -1,0 +1,206 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+  font-family: 'Consolas', 'Courier New', monospace;
+}
+
+body, html {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: transparent;
+}
+
+#hud-container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  background: radial-gradient(circle at center, rgba(0, 30, 50, 0.15) 0%, rgba(0, 0, 0, 0.4) 100%);
+}
+
+#canvas-container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 600px;
+  height: 600px;
+  pointer-events: auto;
+  cursor: pointer;
+  z-index: 10;
+}
+
+/* HUD Panels */
+.hud-panel {
+  position: absolute;
+  padding: 18px 24px;
+  background: rgba(4, 16, 26, 0.65);
+  border: 1px solid rgba(0, 243, 255, 0.4);
+  box-shadow: 0 0 20px rgba(0, 243, 255, 0.15), inset 0 0 15px rgba(0, 243, 255, 0.1);
+  backdrop-filter: blur(8px);
+  color: #00f3ff;
+  border-radius: 8px;
+  z-index: 20;
+}
+
+.top-left {
+  top: 24px;
+  left: 24px;
+}
+
+.top-right {
+  top: 24px;
+  right: 24px;
+  text-align: right;
+}
+
+.bottom {
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 70%;
+  max-width: 900px;
+  text-align: center;
+}
+
+.bottom-right {
+  bottom: 30px;
+  right: 24px;
+  text-align: right;
+  max-width: 420px;
+}
+
+.bottom-right #sys-last {
+  display: inline-block;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+#clock {
+  font-size: 2.2rem;
+  font-weight: bold;
+  letter-spacing: 3px;
+  text-shadow: 0 0 10px #00f3ff;
+}
+
+#date {
+  font-size: 0.9rem;
+  opacity: 0.8;
+  margin-bottom: 8px;
+}
+
+.status-indicator {
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot.green {
+  background-color: #30ff6b;
+  box-shadow: 0 0 10px #30ff6b;
+}
+
+.telemetry-item {
+  font-size: 0.85rem;
+  margin-bottom: 4px;
+}
+
+#subtitle {
+  font-size: 1.2rem;
+  line-height: 1.5;
+  color: #ffffff;
+  text-shadow: 0 0 8px rgba(0, 243, 255, 0.8);
+}
+
+/* Mic Level Bar */
+#micLevelWrap {
+  position: absolute;
+  top: 24px;
+  left: 320px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(4, 16, 26, 0.65);
+  border: 1px solid rgba(0, 243, 255, 0.3);
+  padding: 8px 14px;
+  border-radius: 6px;
+  backdrop-filter: blur(6px);
+  color: #00f3ff;
+  font-size: 0.85rem;
+  z-index: 20;
+}
+
+#micLevelBar {
+  width: 100px;
+  height: 10px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid #00f3ff;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+#micLevelFill {
+  width: 0%;
+  height: 100%;
+  background: linear-gradient(90deg, #30ff6b, #00f3ff);
+  transition: width 0.05s ease;
+}
+
+/* Map Overlay */
+#mapOverlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 920px;
+  height: 600px;
+  background: rgba(4, 16, 26, 0.85);
+  border: 2px solid #00f3ff;
+  box-shadow: 0 0 45px rgba(0, 243, 255, 0.4);
+  backdrop-filter: blur(12px);
+  border-radius: 12px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#mapOverlay.hidden {
+  display: none;
+}
+
+.map-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: rgba(0, 243, 255, 0.15);
+  color: #00f3ff;
+  font-weight: bold;
+}
+
+#closeMapBtn {
+  background: none;
+  border: none;
+  color: #00f3ff;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+#map {
+  width: 100%;
+  height: 100%;
+}

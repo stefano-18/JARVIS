@@ -1,0 +1,24 @@
+python-dotenv>=1.0.1
+pyyaml>=6.0
+websockets>=12.0
+aiohttp>=3.9.0
+rich>=13.0.0
+requests>=2.31
+beautifulsoup4>=4.12
+fastapi>=0.110
+uvicorn>=0.29
+httpx>=0.27
+pytest>=8.0
+pytest-asyncio>=0.23
+psutil>=5.9
+pypdf>=6.0  # resumen de PDF locales (sin red)
+tzdata>=2024.1  # ZoneInfo en Windows (TIMEZONE)
+# Voz Piper (TTS local, voz es_ES-davefx-medium)
+# numpy<2: la serie 2.x queda bloqueada por Control de aplicaciones (DLL
+# _multiarray_umath; ver docs/TROUBLESHOOTING.md). Fija la serie 1.26+.
+numpy>=1.26,<2
+piper-tts>=1.2.0
+imageio-ffmpeg>=0.5.0
+# Google opcional (solo si GOOGLE_ENABLED=1)
+# google-api-python-client>=2.0
+# google-auth-oauthlib>=1.0

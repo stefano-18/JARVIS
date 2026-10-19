@@ -1,0 +1,6 @@
+[Unit]
+Description=JARVIS: aprende la pronunciacion de apps y juegos nuevos
+
+[Service]
+Type=oneshot
+ExecStart=%h/jarvis2/.venv/bin/python %h/jarvis2/scripts/aprende_pron.py

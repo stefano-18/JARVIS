@@ -1,0 +1,8 @@
+[Unit]
+Description=JARVIS battery charge limit 60/50
+After=multi-user.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/jarvis-battery.sh
+[Install]
+WantedBy=multi-user.target

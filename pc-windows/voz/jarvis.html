@@ -1,0 +1,920 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Núcleo JARVIS</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600&display=swap">
+<style>
+  /* Layout: a full-screen near-black field of faint dots. The screen's four
+     borders are the reactive element (an inset blue glow that pulses with a
+     simulated voice signal), with a soft central aura behind a small JARVIS
+     wordmark and live clock. A bottom-center mic-mute control is the only
+     visible control over the void. The holographic "scene" machinery
+     (map / weather / world clock) stays in the file but has no on-screen
+     trigger — it is invoked programmatically (window.jarvis.openScene) so it
+     can later be wired to real voice commands.
+     Deliberately single dark theme — the aesthetic is inherently a dark screen. */
+  :root {
+    color-scheme: dark;
+
+    /* Color */
+    --void:   #05070d;                   /* deep near-black field */
+    --cyan:   #19e3ff;                   /* luminous primary accent */
+    --dot:    rgba(25, 227, 255, 0.10);  /* faint background dots */
+    --ink:    #e7f4fa;                   /* soft-white text */
+    --ink-mut: rgba(170, 198, 210, 0.55);/* muted captions */
+    --line:   rgba(25, 227, 255, 0.26);  /* hairline cyan borders */
+    --panel:  rgba(8, 16, 24, 0.62);     /* glass panel fill */
+
+    /* Type */
+    --f-mark:  "Orbitron", "Segoe UI", system-ui, sans-serif;
+    --f-label: "Rajdhani", "Segoe UI", system-ui, sans-serif;
+
+    /* Live edge-glow drive (updated per frame by script) */
+    --glow-a: 0.12;        /* glow opacity 0..1 */
+    --glow-blur: 70px;     /* inner spread of the glow */
+    --glow-spread: 2px;    /* solid hairline thickness */
+
+    /* Central-aura drive (updated per frame, in sync with the edge glow) */
+    --aura-a: 0.14;        /* aura brightness 0..1 */
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { height: 100%; }
+
+  body {
+    margin: 0;
+    background: var(--void);
+    color: var(--ink);
+    font-family: var(--f-label);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  /* ---- Background: faint, evenly spaced dot grid ---- */
+  .field {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background-color: var(--void);
+    background-image: radial-gradient(var(--dot) 1.2px, transparent 1.3px);
+    background-size: 26px 26px;
+    background-position: center center;
+  }
+
+  /* ---- Soft central aura behind the wordmark ---- */
+  .aura {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    width: min(700px, 120vw);
+    height: min(700px, 120vw);
+    transform: translate(-50%, -50%);
+    z-index: 1;
+    pointer-events: none;
+    will-change: opacity;
+    opacity: var(--aura-a);
+    background: radial-gradient(circle at center,
+      rgba(25, 227, 255, 0.95) 0%,
+      rgba(25, 227, 255, 0.55) 14%,
+      rgba(25, 227, 255, 0.26) 30%,
+      rgba(25, 227, 255, 0.10) 46%,
+      rgba(25, 227, 255, 0.00) 66%);
+  }
+
+  /* ---- Reactive screen-edge glow (all four borders) ---- */
+  .edge {
+    position: fixed;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    will-change: box-shadow;
+    box-shadow:
+      inset 0 0 var(--glow-spread) 0 rgba(25, 227, 255, calc(var(--glow-a) * 1.0)),
+      inset 0 0 var(--glow-blur) calc(var(--glow-spread) * 0.5) rgba(25, 227, 255, calc(var(--glow-a) * 0.7)),
+      inset 0 0 calc(var(--glow-blur) * 2.6) 0 rgba(25, 227, 255, calc(var(--glow-a) * 0.35));
+  }
+
+  /* ---- Stage: center the wordmark + clock ---- */
+  .stage {
+    position: relative;
+    z-index: 3;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(10px, 2.4vw, 18px);
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 24px;
+    text-align: center;
+    transition: opacity 420ms ease, filter 420ms ease;
+  }
+  /* When a scene is open, the idle HUD recedes a touch behind it. */
+  body.scene-open .stage { opacity: 0.32; filter: blur(1px); }
+
+  .wordmark {
+    font-family: var(--f-mark);
+    font-weight: 900;
+    font-size: clamp(14px, 3.2vw, 23px);
+    letter-spacing: 0.28em;
+    text-indent: 0.28em;             /* optically recenter the tracked text */
+    color: var(--ink);
+    text-shadow: 0 0 18px rgba(25, 227, 255, 0.5), 0 0 40px rgba(25, 227, 255, 0.24);
+    user-select: none;
+    line-height: 1;
+  }
+
+  /* ---- Live clock, directly under the name ---- */
+  .readout {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .clock {
+    font-family: var(--f-mark);
+    font-weight: 500;
+    font-size: clamp(19px, 4.8vw, 32px);
+    letter-spacing: 0.1em;
+    text-indent: 0.1em;
+    color: var(--cyan);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    text-shadow: 0 0 20px rgba(25, 227, 255, 0.35);
+    user-select: none;
+  }
+  .date {
+    font-family: var(--f-label);
+    font-weight: 500;
+    font-size: clamp(8px, 1.7vw, 9px);
+    letter-spacing: 0.34em;
+    text-indent: 0.34em;
+    text-transform: uppercase;
+    color: var(--ink-mut);
+    user-select: none;
+  }
+
+  /* ---- Ephemeral command toasts, top-left corner ---- */
+  .toasts {
+    position: fixed;
+    z-index: 7;
+    top: max(14px, env(safe-area-inset-top, 0px));
+    left: max(16px, env(safe-area-inset-left, 0px));
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    pointer-events: none;
+    max-width: min(260px, 70vw);
+  }
+  .toast {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    align-self: flex-start;
+    padding: 4px 9px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    background: rgba(8, 16, 24, 0.55);
+    backdrop-filter: blur(4px);
+    font-family: var(--f-label);
+    font-weight: 500;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    opacity: 0;
+    transform: translateY(-4px);
+    animation: toastLife 2s ease forwards;
+  }
+  .toast i {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--cyan);
+    box-shadow: 0 0 7px var(--cyan);
+    flex: none;
+  }
+  @keyframes toastLife {
+    0%   { opacity: 0; transform: translateY(-4px); }
+    12%  { opacity: 1; transform: translateY(0); }
+    72%  { opacity: 1; transform: translateY(0); }
+    100% { opacity: 0; transform: translateY(-3px); }
+  }
+
+  /* ---- Bottom-center dock: mic-mute control (only visible control) ---- */
+  .dock {
+    position: fixed;
+    z-index: 6;
+    left: 50%;
+    bottom: calc(max(48px, env(safe-area-inset-bottom, 0px) + 32px));
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    width: max-content;
+    max-width: calc(100vw - 24px);
+  }
+
+  .mic {
+    appearance: none;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    color: var(--cyan);
+    background: radial-gradient(circle at center, rgba(25,227,255,0.10), rgba(8,16,24,0.5));
+    border: 1px solid var(--line);
+    box-shadow: 0 0 16px rgba(25, 227, 255, 0.18), inset 0 0 10px rgba(25,227,255,0.08);
+    transition: color 200ms ease, border-color 200ms ease, box-shadow 200ms ease, background 200ms ease;
+  }
+  .mic:hover, .mic:focus-visible {
+    box-shadow: 0 0 22px rgba(25, 227, 255, 0.3), inset 0 0 12px rgba(25,227,255,0.12);
+    outline: none;
+  }
+  .mic svg { width: 16px; height: 16px; display: block; }
+  .mic .slash { opacity: 0; transition: opacity 180ms ease; }
+  .mic[aria-pressed="true"] {          /* muted */
+    color: var(--ink-mut);
+    border-color: rgba(170, 198, 210, 0.3);
+    box-shadow: none;
+    background: rgba(8, 16, 24, 0.5);
+  }
+  .mic[aria-pressed="true"] .slash { opacity: 1; }
+
+  .mic-label {
+    font-family: var(--f-label);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-mut);
+    min-height: 12px;
+    opacity: 0;
+    transition: opacity 200ms ease;
+    user-select: none;
+    text-align: center;
+  }
+  body.mic-muted .mic-label { opacity: 1; }
+
+  /* ---- Scene overlay (map / weather / world clock) ---- */
+  .scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 4;
+    pointer-events: none;
+    opacity: 0;
+    background: radial-gradient(circle at center, rgba(5,7,13,0.35), rgba(5,7,13,0.68));
+    backdrop-filter: blur(2px);
+    transition: opacity 450ms ease;
+  }
+  body.scene-open .scrim { opacity: 1; pointer-events: auto; }
+
+  .scenes {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 24px;
+  }
+  .scene {
+    grid-area: 1 / 1;
+    width: min(560px, 100%);
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(18px) scale(0.955);
+    transition: opacity 450ms ease, transform 460ms cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 460ms;
+    will-change: opacity, transform;
+  }
+  .scene.on {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+    transition: opacity 450ms ease, transform 460ms cubic-bezier(0.16, 1, 0.3, 1), visibility 0s;
+  }
+
+  .card {
+    position: relative;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--panel);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 0 40px rgba(25, 227, 255, 0.10), inset 0 0 28px rgba(25,227,255,0.05);
+    overflow: hidden;
+  }
+  .card-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 14px 16px 10px;
+  }
+  .card-kicker {
+    font-family: var(--f-label);
+    font-weight: 600;
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--ink-mut);
+  }
+  .close {
+    appearance: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--f-label);
+    font-weight: 600;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--cyan);
+    background: transparent;
+    border: 1px solid rgba(25, 227, 255, 0.22);
+    border-radius: 999px;
+    padding: 4px 10px;
+    transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+  }
+  .close:hover, .close:focus-visible {
+    border-color: var(--cyan);
+    background: rgba(25, 227, 255, 0.08);
+    box-shadow: 0 0 12px rgba(25,227,255,0.22);
+    outline: none;
+  }
+  .close svg { width: 11px; height: 11px; }
+
+  /* --- Scene A: holographic map --- */
+  .map-wrap { position: relative; }
+  .map-svg { display: block; width: 100%; height: auto; }
+  .map-overlay {
+    position: absolute;
+    left: 16px;
+    bottom: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    pointer-events: none;
+  }
+  .map-city {
+    font-family: var(--f-mark);
+    font-weight: 700;
+    font-size: clamp(20px, 5vw, 30px);
+    letter-spacing: 0.14em;
+    color: var(--ink);
+    text-shadow: 0 0 18px rgba(25,227,255,0.45);
+    line-height: 1;
+  }
+  .map-coords {
+    font-family: var(--f-label);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    color: var(--cyan);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* --- Scene B: weather --- */
+  .wx-body { padding: 4px 18px 18px; }
+  .wx-top {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .wx-city {
+    font-family: var(--f-mark);
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.1em;
+    color: var(--ink);
+  }
+  .wx-cond {
+    font-family: var(--f-label);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    color: var(--ink-mut);
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+  .wx-temp {
+    font-family: var(--f-mark);
+    font-weight: 500;
+    font-size: clamp(46px, 13vw, 64px);
+    line-height: 0.9;
+    color: var(--cyan);
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 26px rgba(25,227,255,0.3);
+    margin-left: auto;
+  }
+  .wx-icon { width: 58px; height: 58px; flex: none; color: var(--cyan); }
+  .wx-meta { flex: 1 1 140px; min-width: 0; }
+  .wx-forecast {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .wx-chip {
+    border: 1px solid rgba(25, 227, 255, 0.16);
+    border-radius: 10px;
+    background: rgba(8, 16, 24, 0.4);
+    padding: 9px 6px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+  }
+  .wx-chip .d {
+    font-family: var(--f-label);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-mut);
+  }
+  .wx-chip svg { width: 22px; height: 22px; color: var(--cyan); }
+  .wx-chip .t {
+    font-family: var(--f-mark);
+    font-size: 12px;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.04em;
+  }
+  .wx-chip .t span { color: var(--ink-mut); }
+
+  /* --- Scene C: world clock --- */
+  .wc-body { padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .wc-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 11px 14px;
+    border: 1px solid rgba(25, 227, 255, 0.14);
+    border-radius: 10px;
+    background: rgba(8, 16, 24, 0.4);
+  }
+  .wc-city {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .wc-city .n {
+    font-family: var(--f-label);
+    font-weight: 600;
+    font-size: 14px;
+    letter-spacing: 0.08em;
+    color: var(--ink);
+    text-transform: uppercase;
+  }
+  .wc-city .z {
+    font-family: var(--f-label);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--ink-mut);
+  }
+  .wc-time {
+    font-family: var(--f-mark);
+    font-weight: 500;
+    font-size: clamp(20px, 5.5vw, 26px);
+    color: var(--cyan);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.06em;
+    text-shadow: 0 0 16px rgba(25,227,255,0.28);
+  }
+  .wc-time .s { font-size: 0.6em; color: var(--ink-mut); margin-left: 3px; }
+
+  /* Gentle pulse for the map marker */
+  @keyframes markerPulse {
+    0%   { r: 4; opacity: 0.9; }
+    70%  { r: 20; opacity: 0; }
+    100% { r: 20; opacity: 0; }
+  }
+  .marker-ring { animation: markerPulse 2.6s ease-out infinite; transform-origin: center; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .toast { animation: toastLifeReduced 2s linear forwards; }
+    @keyframes toastLifeReduced {
+      0% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; }
+    }
+    /* Scenes appear/disappear without slide motion; edges/aura steady. */
+    .scene, .scene.on { transition: opacity 240ms linear, visibility 0s; transform: none; }
+    .stage { transition: opacity 240ms linear; filter: none; }
+    body.scene-open .stage { filter: none; }
+    .marker-ring { animation: none; opacity: 0.5; }
+    .scrim { transition: opacity 240ms linear; }
+  }
+</style>
+
+<div class="field" aria-hidden="true"></div>
+<div class="aura" id="aura" aria-hidden="true"></div>
+<div class="edge" id="edge" aria-hidden="true"></div>
+
+<main class="stage">
+  <div class="wordmark">JARVIS</div>
+  <div class="readout" role="status" aria-live="off">
+    <div class="clock" id="clock">--:--:--</div>
+    <div class="date" id="date"></div>
+  </div>
+</main>
+
+<div class="scrim" id="scrim" aria-hidden="true"></div>
+
+<!-- Inline holographic scenes -->
+<div class="scenes" id="scenes">
+
+  <!-- A) Mapa · Londres -->
+  <section class="scene" id="scene-mapa" role="dialog" aria-modal="false" aria-label="Mapa de Londres" aria-hidden="true">
+    <div class="card">
+      <div class="card-head">
+        <span class="card-kicker">Mapa · Ubicación</span>
+        <button class="close" type="button" data-close>
+          <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 2l8 8M10 2l-8 8"/></svg>
+          Cerrar
+        </button>
+      </div>
+      <div class="map-wrap">
+        <!-- Original stylized holographic grid (no external tiles) -->
+        <svg class="map-svg" viewBox="0 0 560 300" role="img" aria-label="Mapa holográfico estilizado">
+          <defs>
+            <linearGradient id="roadFade" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#19e3ff" stop-opacity="0.5"/>
+              <stop offset="1" stop-color="#19e3ff" stop-opacity="0.18"/>
+            </linearGradient>
+            <radialGradient id="mapGlow" cx="50%" cy="46%" r="60%">
+              <stop offset="0" stop-color="#0a1b26"/>
+              <stop offset="1" stop-color="#05070d"/>
+            </radialGradient>
+          </defs>
+          <rect x="0" y="0" width="560" height="300" fill="url(#mapGlow)"/>
+          <!-- faint block grid -->
+          <g stroke="#19e3ff" stroke-opacity="0.08" stroke-width="1">
+            <path d="M0 40H560M0 90H560M0 140H560M0 190H560M0 240H560"/>
+            <path d="M70 0V300M140 0V300M210 0V300M280 0V300M350 0V300M420 0V300M490 0V300"/>
+          </g>
+          <!-- river curve -->
+          <path d="M-10 150 C 90 120, 150 205, 250 180 S 430 120, 575 165"
+                fill="none" stroke="#19e3ff" stroke-opacity="0.28" stroke-width="10" stroke-linecap="round"/>
+          <path d="M-10 150 C 90 120, 150 205, 250 180 S 430 120, 575 165"
+                fill="none" stroke="#0a1b26" stroke-width="3"/>
+          <!-- main arterials -->
+          <g fill="none" stroke="url(#roadFade)" stroke-width="2.2" stroke-linecap="round">
+            <path d="M40 20 L 230 120 L 300 118 L 520 60"/>
+            <path d="M20 250 L 180 200 L 300 215 L 540 250"/>
+            <path d="M120 10 L 150 300"/>
+            <path d="M380 0 L 350 300"/>
+            <path d="M0 110 L 200 118 L 360 118 L 560 100"/>
+          </g>
+          <!-- a roundabout / ring -->
+          <circle cx="300" cy="118" r="26" fill="none" stroke="#19e3ff" stroke-opacity="0.45" stroke-width="1.6"/>
+          <circle cx="300" cy="118" r="14" fill="none" stroke="#19e3ff" stroke-opacity="0.3" stroke-width="1.2"/>
+          <!-- secondary streets -->
+          <g fill="none" stroke="#19e3ff" stroke-opacity="0.22" stroke-width="1.2">
+            <path d="M210 60 L 250 150"/>
+            <path d="M330 150 L 400 200"/>
+            <path d="M160 150 L 120 210"/>
+            <path d="M420 70 L 460 150"/>
+          </g>
+          <!-- location marker -->
+          <g>
+            <circle class="marker-ring" cx="300" cy="118" r="4" fill="none" stroke="#19e3ff" stroke-width="2"/>
+            <circle cx="300" cy="118" r="5" fill="#19e3ff"/>
+            <circle cx="300" cy="118" r="9" fill="none" stroke="#19e3ff" stroke-opacity="0.6" stroke-width="1.4"/>
+          </g>
+          <!-- compass top-right -->
+          <g transform="translate(512 44)">
+            <circle r="18" fill="rgba(8,16,24,0.5)" stroke="#19e3ff" stroke-opacity="0.35" stroke-width="1"/>
+            <path d="M0 -13 L5 3 L0 -1 L-5 3 Z" fill="#19e3ff"/>
+            <text x="0" y="-21" text-anchor="middle" fill="#9fc7d4" font-family="Rajdhani, sans-serif" font-size="9" letter-spacing="1">N</text>
+          </g>
+        </svg>
+        <div class="map-overlay">
+          <div class="map-city">LONDRES</div>
+          <div class="map-coords">51.5074° N&nbsp;&nbsp;0.1278° O</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- B) Clima -->
+  <section class="scene" id="scene-clima" role="dialog" aria-modal="false" aria-label="Clima" aria-hidden="true">
+    <div class="card">
+      <div class="card-head">
+        <span class="card-kicker">Clima · Pronóstico</span>
+        <button class="close" type="button" data-close>
+          <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 2l8 8M10 2l-8 8"/></svg>
+          Cerrar
+        </button>
+      </div>
+      <div class="wx-body">
+        <div class="wx-top">
+          <!-- original sun-behind-cloud glyph -->
+          <svg class="wx-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+            <g stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <circle cx="18" cy="17" r="7" fill="rgba(25,227,255,0.12)"/>
+              <path d="M18 4v4M18 26v4M31 17h-4M9 17H5M27 8l-3 3M12 23l-3 3M27 26l-3-3M12 11L9 8"/>
+            </g>
+            <path d="M16 34a7 7 0 0 1 13.4-2.6A6 6 0 1 1 31 43H17a5.5 5.5 0 0 1-1-10.9"
+                  fill="rgba(8,16,24,0.85)" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          </svg>
+          <div class="wx-meta">
+            <div class="wx-city">LONDRES</div>
+            <div class="wx-cond">Parcialmente nublado</div>
+          </div>
+          <div class="wx-temp">14°</div>
+        </div>
+        <div class="wx-forecast">
+          <div class="wx-chip">
+            <span class="d">Hoy</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="rgba(25,227,255,0.14)"/><path d="M12 3v2M12 19v2M21 12h-2M5 12H3M18 6l-1.5 1.5M7.5 16.5 6 18M18 18l-1.5-1.5M7.5 7.5 6 6" stroke-linecap="round"/></svg>
+            <span class="t">15°<span> / 9°</span></span>
+          </div>
+          <div class="wx-chip">
+            <span class="d">Vie</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.8-7.9A5.5 5.5 0 0 1 17 11a3.5 3.5 0 0 1 0 7Z" fill="rgba(25,227,255,0.1)" stroke-linejoin="round"/></svg>
+            <span class="t">13°<span> / 8°</span></span>
+          </div>
+          <div class="wx-chip">
+            <span class="d">Sáb</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M7 15a4 4 0 0 1-.8-7.9A5.5 5.5 0 0 1 17 8a3.5 3.5 0 0 1 0 7Z" fill="rgba(25,227,255,0.1)" stroke-linejoin="round"/><path d="M9 19l-1 2M13 19l-1 2M17 19l-1 2" stroke-linecap="round"/></svg>
+            <span class="t">12°<span> / 7°</span></span>
+          </div>
+          <div class="wx-chip">
+            <span class="d">Dom</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="11" r="4" fill="rgba(25,227,255,0.14)"/><path d="M12 3v1.5M20 11h-1.5M4 11H3M17.6 5.4l-1 1M6.4 5.4l1 1" stroke-linecap="round"/></svg>
+            <span class="t">16°<span> / 10°</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- C) Reloj mundial -->
+  <section class="scene" id="scene-reloj" role="dialog" aria-modal="false" aria-label="Reloj mundial" aria-hidden="true">
+    <div class="card">
+      <div class="card-head">
+        <span class="card-kicker">Reloj Mundial</span>
+        <button class="close" type="button" data-close>
+          <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 2l8 8M10 2l-8 8"/></svg>
+          Cerrar
+        </button>
+      </div>
+      <div class="wc-body" id="wc-list"></div>
+    </div>
+  </section>
+
+</div>
+
+<!-- Bottom dock: mic mute is the only visible control -->
+<div class="dock">
+  <button class="mic" id="mic" type="button" aria-pressed="false" aria-label="Micrófono activado — silenciar">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="9" y="3" width="6" height="11" rx="3" fill="rgba(25,227,255,0.12)"/>
+      <path d="M6 11a6 6 0 0 0 12 0"/>
+      <path d="M12 17v3M9 20h6"/>
+      <path class="slash" d="M4 4l16 16"/>
+    </svg>
+  </button>
+  <div class="mic-label" id="mic-label" aria-live="polite">Micrófono desactivado</div>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite" aria-label="Comandos recientes"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var reduce = window.matchMedia &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  var root = document.documentElement;
+  var body = document.body;
+
+  /* Mute flag: when true JARVIS "no escucha" — edges/aura drop to a steady
+     dim idle level and ignore the simulated voice. */
+  var muted = false;
+
+  /* ---------- Simulated voice states that drive the edge glow ---------- */
+  var STATES = [
+    { key: "reposo",     reactivity: 0.10, breathe: 0.10, hold: 5200 },
+    { key: "escuchando", reactivity: 0.78, breathe: 0.05, hold: 5600 },
+    { key: "hablando",   reactivity: 1.00, breathe: 0.08, hold: 5000 }
+  ];
+  var si = 0;
+  function cycleState() {
+    si = (si + 1) % STATES.length;
+    setTimeout(cycleState, STATES[si].hold);
+  }
+  setTimeout(cycleState, STATES[0].hold);
+
+  /* ---------- Simulated voice signal ---------- */
+  var level = 0.1, target = 0.1, nextPick = 0, amp = 0.1;
+  function pickTarget(now, s) {
+    var react = s.reactivity;
+    target = Math.random() * react + (s.key === "reposo" ? 0.02 : 0.06);
+    var fast = s.key === "hablando" ? 1 : (s.key === "escuchando" ? 1.6 : 3);
+    nextPick = now + (90 + Math.random() * 180) * fast;
+  }
+
+  function applyMutedGlow() {
+    // Dim, steady "off" level — JARVIS is not listening.
+    root.style.setProperty("--glow-a", "0.055");
+    root.style.setProperty("--glow-blur", "48px");
+    root.style.setProperty("--glow-spread", "1.3px");
+    root.style.setProperty("--aura-a", "0.05");
+  }
+
+  var t0 = performance.now();
+
+  if (reduce) {
+    root.style.setProperty("--glow-a", "0.16");
+    root.style.setProperty("--glow-blur", "64px");
+    root.style.setProperty("--glow-spread", "2px");
+    root.style.setProperty("--aura-a", "0.17");
+  } else {
+    (function frame(now) {
+      if (muted) {
+        applyMutedGlow();
+        requestAnimationFrame(frame);
+        return;
+      }
+      var s = STATES[si];
+      var t = (now - t0) / 1000;
+
+      if (now >= nextPick) pickTarget(now, s);
+      level += (target - level) * 0.18;
+      var jitter = (Math.random() - 0.5) * s.reactivity * 0.14;
+      var breathe = s.breathe * (0.5 + 0.5 * Math.sin(t * 1.1));
+      var want = breathe + level * 0.9 + jitter;
+      amp += (want - amp) * 0.22;
+      if (amp < 0) amp = 0;
+      if (amp > 1.2) amp = 1.2;
+
+      var a = 0.08 + amp * 0.62;
+      var blur = 44 + amp * 120;
+      var spread = 1 + amp * 3;
+      root.style.setProperty("--glow-a", a.toFixed(3));
+      root.style.setProperty("--glow-blur", blur.toFixed(1) + "px");
+      root.style.setProperty("--glow-spread", spread.toFixed(2) + "px");
+
+      var aura = 0.10 + amp * 0.34;
+      root.style.setProperty("--aura-a", aura.toFixed(3));
+
+      requestAnimationFrame(frame);
+    })(t0);
+  }
+
+  /* ---------- Mic mute toggle ---------- */
+  var micBtn = document.getElementById("mic");
+  function setMuted(next) {
+    muted = next;
+    micBtn.setAttribute("aria-pressed", muted ? "true" : "false");
+    micBtn.setAttribute("aria-label", muted
+      ? "Micrófono desactivado — activar"
+      : "Micrófono activado — silenciar");
+    body.classList.toggle("mic-muted", muted);
+    if (muted) applyMutedGlow();
+    else if (reduce) {
+      root.style.setProperty("--glow-a", "0.16");
+      root.style.setProperty("--aura-a", "0.17");
+    }
+  }
+  micBtn.addEventListener("click", function () { setMuted(!muted); });
+
+  /* ---------- Live clock (under the name) ---------- */
+  var clockEl = document.getElementById("clock");
+  var dateEl = document.getElementById("date");
+  var DIAS = ["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"];
+  var MESES = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN",
+               "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
+  function pad(n) { return (n < 10 ? "0" : "") + n; }
+
+  /* ---------- World clock ---------- */
+  // Offsets in hours from UTC (Oct 2026, DST where applicable).
+  var CITIES = [
+    { n: "Londres",     z: "GMT+1", off: 1 },
+    { n: "Nueva York",  z: "GMT−4", off: -4 },
+    { n: "Madrid",      z: "GMT+2", off: 2 },
+    { n: "Tokio",       z: "GMT+9", off: 9 }
+  ];
+  var wcList = document.getElementById("wc-list");
+  CITIES.forEach(function (c, i) {
+    var row = document.createElement("div");
+    row.className = "wc-row";
+    row.innerHTML =
+      '<div class="wc-city"><span class="n">' + c.n + '</span>' +
+      '<span class="z">' + c.z + '</span></div>' +
+      '<div class="wc-time" id="wc-' + i + '">--:--<span class="s">--</span></div>';
+    wcList.appendChild(row);
+  });
+
+  function tick() {
+    var d = new Date();
+    clockEl.textContent = pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+    dateEl.textContent = DIAS[d.getDay()] + " " + pad(d.getDate()) + " " + MESES[d.getMonth()] + " " + d.getFullYear();
+
+    // world clock from UTC + fixed offset
+    var utcMs = d.getTime() + d.getTimezoneOffset() * 60000;
+    CITIES.forEach(function (c, i) {
+      var cd = new Date(utcMs + c.off * 3600000);
+      var el = document.getElementById("wc-" + i);
+      if (el) el.innerHTML = pad(cd.getHours()) + ":" + pad(cd.getMinutes()) +
+        '<span class="s">' + pad(cd.getSeconds()) + '</span>';
+    });
+  }
+  tick();
+  setInterval(tick, 1000);
+
+  /* ---------- Scene (slide) management ---------- */
+  var scenesEl = document.getElementById("scenes");
+  var scrim = document.getElementById("scrim");
+  var SCENES = {
+    mapa:  document.getElementById("scene-mapa"),
+    clima: document.getElementById("scene-clima"),
+    reloj: document.getElementById("scene-reloj")
+  };
+  var current = null;
+
+  function openScene(id) {
+    var el = SCENES[id];
+    if (!el) return;
+    if (current && current !== el) {
+      current.classList.remove("on");
+      current.setAttribute("aria-hidden", "true");
+    }
+    current = el;
+    body.classList.add("scene-open");
+    el.classList.add("on");
+    el.setAttribute("aria-hidden", "false");
+    var closeBtn = el.querySelector("[data-close]");
+    if (closeBtn) closeBtn.focus({ preventScroll: true });
+  }
+  function closeScene() {
+    if (!current) return;
+    current.classList.remove("on");
+    current.setAttribute("aria-hidden", "true");
+    current = null;
+    body.classList.remove("scene-open");
+  }
+
+  // No on-screen triggers: scenes are invoked programmatically (ready to be
+  // wired to real voice commands later). e.g. window.jarvis.openScene("mapa").
+  window.jarvis = window.jarvis || {};
+  window.jarvis.openScene = openScene;
+  window.jarvis.closeScene = closeScene;
+
+  // Close buttons
+  document.querySelectorAll("[data-close]").forEach(function (b) {
+    b.addEventListener("click", closeScene);
+  });
+  // Click scrim to dismiss
+  scrim.addEventListener("click", closeScene);
+  // Esc to close
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && current) closeScene();
+  });
+
+  /* ---------- Ephemeral command toasts (top-left) ---------- */
+  var toastsEl = document.getElementById("toasts");
+  var MSGS = [
+    "Comando recibido",
+    "Captura de pantalla registrada",
+    "PC encendido",
+    "Modo seguro activado",
+    "Resumen diario enviado",
+    "Portátil en suspensión"
+  ];
+  var mi = 0;
+  function showToast(text) {
+    var el = document.createElement("div");
+    el.className = "toast";
+    el.innerHTML = '<i></i>';
+    el.appendChild(document.createTextNode(text));
+    toastsEl.appendChild(el);
+    setTimeout(function () { el.remove(); }, 2100);
+  }
+  function nextToast() {
+    showToast(MSGS[mi % MSGS.length]);
+    mi++;
+    setTimeout(nextToast, 4200 + Math.random() * 3200);
+  }
+  setTimeout(nextToast, 1800);
+})();
+</script>
+
+</body></html>

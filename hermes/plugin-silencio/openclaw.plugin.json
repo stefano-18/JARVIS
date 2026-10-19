@@ -1,0 +1,12 @@
+{
+  "id": "jarvis-silencio",
+  "name": "JARVIS Silencio",
+  "description": "Intercepta comandos de control antes del LLM y filtra fugas (comandos, rutas, codigo) en la salida.",
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false
+  }
+}

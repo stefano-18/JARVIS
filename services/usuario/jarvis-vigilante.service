@@ -1,0 +1,6 @@
+[Unit]
+Description=JARVIS: vigilante (reinicia lo caido y avisa)
+
+[Service]
+Type=oneshot
+ExecStart=%h/jarvis2/.venv/bin/python %h/jarvis2/scripts/jx_vigilante.py

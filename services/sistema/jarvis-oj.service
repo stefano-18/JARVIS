@@ -1,0 +1,15 @@
+[Unit]
+Description=OpenJarvis serve :8000
+After=network-online.target jarvis2.service
+Wants=network-online.target
+Requires=jarvis2.service
+[Service]
+User={{USUARIO}}
+WorkingDirectory={{HOME}}/OpenJarvis
+ExecStart={{HOME}}/OpenJarvis/scripts/serve-fase8b.sh
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+[Install]
+WantedBy=multi-user.target

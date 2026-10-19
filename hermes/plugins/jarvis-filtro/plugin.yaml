@@ -1,0 +1,6 @@
+name: jarvis-filtro
+version: "1.0"
+description: "JARVIS: palabra clave, ordenes rapidas sin IA, visto bueno de envios y candado de herramientas."
+provides_hooks:
+  - post_gateway_admission
+  - pre_tool_call

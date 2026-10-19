@@ -1,0 +1,10 @@
+[Unit]
+Description=JARVIS: pronunciacion, una vez al dia
+
+[Timer]
+OnCalendar=*-*-* 05:20
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,17 @@
+# JARVIS: configuración única (SIN claves). Copie a ~/.config/jarvis/config.toml y cambie los valores de ejemplo.
+pc_ip = "192.168.1.60"          # IP del PC con Windows
+portatil_ip = "192.168.1.50"    # IP del portátil (cerebro)
+usuario = "usuario"
+chat_telegram = "123456789"     # su id de chat de Telegram
+zona = "Europe/Madrid"
+silencio_desde = 23
+silencio_hasta = 8
+tope_global_usd = 0.50
+aviso_gasto_usd = 0.30
+solo_claude = true
+# La MAC del PC (para encenderlo) va en ~/jarvis2/.env como JARVIS_PC_MAC
+cuenta_steam_1 = "cuenta1"
+cuenta_steam_2 = "cuenta2"
+win_usuario = "usuario"
+nombre_pc = "MI-PC"
+nombre = "Su nombre"

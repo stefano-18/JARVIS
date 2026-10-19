@@ -1,0 +1,30 @@
+[Unit]
+Description=Hermes Agent Gateway - Messaging Platform Integration
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart="{{HOME}}/.hermes/hermes-agent/.hermes/bin/hermes" "gateway" "run"
+WorkingDirectory={{HOME}}/.hermes
+Environment="PATH={{HOME}}/.hermes/hermes-agent/node_modules/.bin:{{HOME}}/.hermes/tools/node-26.7.0-linux-x64/bin:{{HOME}}/.hermes/tools/npm-12.0.2-linux-x64/bin:{{HOME}}/.local/bin:{{HOME}}/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+Environment="HERMES_HOME={{HOME}}/.hermes"
+Environment="HERMES_SUPERVISED_CHILD=1"
+Restart=always
+RestartSec=5
+RestartForceExitStatus=75
+SuccessExitStatus=75
+RestartPreventExitStatus=78
+KillMode=mixed
+KillSignal=SIGTERM
+ExecReload=/bin/kill -USR1 $MAINPID
+ExecStop=-"{{HOME}}/.hermes/hermes-agent/.hermes/bin/hermes" "--run-module" "gateway.systemd_stop_mark"
+ExecStopPost=-"{{HOME}}/.hermes/hermes-agent/.hermes/bin/hermes" "--run-module" "gateway.cgroup_cleanup"
+TimeoutStopSec=70
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

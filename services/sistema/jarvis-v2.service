@@ -1,0 +1,18 @@
+[Unit]
+Description=JARVIS WS :8765 (HUD + JarvisV2Agent)
+After=network-online.target jarvis2.service
+Wants=network-online.target
+[Service]
+User={{USUARIO}}
+WorkingDirectory={{HOME}}/jarvis2
+ExecStart={{HOME}}/jarvis2/.venv/bin/python scripts/hud_server_8765.py
+Restart=always
+RestartSec=5
+Nice=-5
+CPUWeight=200
+IOWeight=200
+OOMScoreAdjust=-500
+StandardOutput=journal
+StandardError=journal
+[Install]
+WantedBy=multi-user.target

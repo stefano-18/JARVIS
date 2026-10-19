@@ -1,0 +1,5 @@
+[Unit]
+Description=CPU temp watchdog 85C -> balance_performance
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/jarvis-temp-watchdog.sh

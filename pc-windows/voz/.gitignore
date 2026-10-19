@@ -1,0 +1,12 @@
+# Snapshot local: dependencias y secretos NO se versionan (siguen en disco).
+node_modules/
+venv/
+__pycache__/
+.pytest_cache/
+*.log
+*.lock
+.env
+.env.agent
+# Se versionan los ejemplos:
+!.env.example
+!.env.agent.example

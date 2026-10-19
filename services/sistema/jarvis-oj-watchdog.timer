@@ -1,0 +1,7 @@
+[Unit]
+Description=Watchdog OpenJarvis cada 2 min
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=2min
+[Install]
+WantedBy=timers.target

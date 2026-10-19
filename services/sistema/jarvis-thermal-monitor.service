@@ -1,0 +1,8 @@
+[Unit]
+Description=JARVIS Thermal Monitor
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/jarvis-thermal-monitor.sh
+User=root

@@ -1,0 +1,5 @@
+[Unit]
+Description=Watchdog OpenJarvis :8000
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/jarvis-oj-watchdog.sh

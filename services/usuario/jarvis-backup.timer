@@ -1,0 +1,7 @@
+[Unit]
+Description=Respaldo diario JARVIS 03:30
+[Timer]
+OnCalendar=03:30
+Persistent=true
+[Install]
+WantedBy=timers.target
