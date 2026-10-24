@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # JARVIS: instala en un PC con Linux (Omarchy/Arch + Hyprland) el agente y la voz que el cerebro del portátil controla.
 # Uso:  bash pc-windows/linux/instalar-pc-linux.sh <IP-del-portátil> [--simulacion]
-# Todo en un solo PC (cerebro aquí mismo): <IP-del-portátil> = 127.0.0.1 y el secreto se coge solo.
+# Instalación completa (cerebro aquí mismo): <IP-del-portátil> = 127.0.0.1 y el secreto se coge solo.
 # El secreto del hub (el mismo JARVIS_REMOTE_SECRET del portátil) se pide por teclado y no se muestra.
 set -euo pipefail
 IP="${1:-}"; SIM=0; [ "${2:-}" = "--simulacion" ] && SIM=1
@@ -16,7 +16,7 @@ haz "python3 -m venv '$V' && '$V/bin/pip' install -q websockets psutil requests 
 
 if [ $SIM = 0 ] && [ ! -f "$C/agent.env" ]; then
   S=""
-  if [ "$IP" = 127.0.0.1 ] && [ -f ~/jarvis2/.env ]; then  # todo en un PC: el secreto ya lo dejó setup.py en este equipo
+  if [ "$IP" = 127.0.0.1 ] && [ -f ~/jarvis2/.env ]; then  # instalación completa: el secreto ya lo dejó setup.py en este equipo
     S=$(sed -n 's/^JARVIS_REMOTE_SECRET=//p' ~/jarvis2/.env | tr -d "\"'" | head -1)
   fi
   [ -n "$S" ] || { read -rsp "Secreto del hub (JARVIS_REMOTE_SECRET del portátil): " S; echo; }

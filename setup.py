@@ -2,7 +2,7 @@
 """JARVIS: asistente de primera instalación. Pregunta los datos y las claves EN ESTE EQUIPO (las claves con entrada
 oculta) y escribe ~/.config/jarvis/config.toml, ~/.config/jarvis/anthropic.key, ~/jarvis2/.env y ~/.hermes/.env con
 permisos 600. Nunca manda nada a ningún sitio. Uso: python3 setup.py  (o  python3 setup.py --ayuda)
-Todo en un solo PC con Linux (cerebro + agente + voz en el mismo equipo):  python3 setup.py --todo-en-uno"""
+Instalación completa en un PC con Linux (cerebro + agente + voz en el mismo equipo):  python3 setup.py --todo-en-uno"""
 import getpass
 import os
 import secrets
