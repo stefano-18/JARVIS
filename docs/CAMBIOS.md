@@ -2,6 +2,7 @@
 
 ## 24/10/2026 (tarde) - Instalación completa
 
+- **Asistente de claves guiado** - `setup.py` explica cómo sacar cada clave (bot de Telegram con @BotFather, Anthropic, Groq y, opcional, Google), la comprueba con su servicio al momento, detecta tu chat de Telegram solo y guarda la palabra clave (solo su huella). Antes había que saber dónde buscarlas, y la palabra clave no tenía forma de ponerse.
 - **Instalación completa (Windows)** - cerebro dentro de WSL y control del PC + voz en Windows, todo en el mismo equipo: `instalar-pc.ps1 -Completa` coge el secreto de WSL solo.
 - **Instalador de Windows arreglado** - copiaba de carpetas que no existían (`pc\...`), no instalaba las librerías y dejaba sin configurar la dirección del cerebro; ahora lo hace todo y pide el secreto sin mostrarlo.
 - **Instalación completa** - JARVIS entero (cerebro, control del PC y voz) en un solo PC con Linux: `python3 setup.py --completa`, `./install.sh` y `bash pc-windows/linux/instalar-pc-linux.sh 127.0.0.1`. Todo por `127.0.0.1`, sin nada abierto a la red.

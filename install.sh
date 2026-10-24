@@ -59,8 +59,9 @@ haz "rm -rf '$T'"
 cat <<'FIN'
 
 == Falta a mano:
-  1. La palabra clave: ~/jarvis2/.venv/bin/python ~/jarvis2/scripts/jarvis_gate.py (nunca por chat).
+  1. La palabra clave: si la saltó, vuelva a ejecutar python3 setup.py (nunca por chat).
   2. Google (opcional): ~/jarvis-control/gvenv/bin/python ~/jarvis2/scripts/google_jx.py auth
-  3. Instalar Hermes con su instalador oficial y comprobar: ~/jarvis2/.venv/bin/python ~/jarvis2/scripts/jx_autotest.py
+  3. Hermes (si no lo tiene): curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
+     y comprobar: ~/jarvis2/.venv/bin/python ~/jarvis2/scripts/jx_autotest.py
   4. El PC con Windows: pc-windows/instalar-pc.ps1 (ver README).
 FIN

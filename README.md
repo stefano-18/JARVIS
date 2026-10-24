@@ -30,11 +30,14 @@ jarvis-repo/
 
 **Requiere:** un portátil, servidor o PC con Linux (Ubuntu/Lubuntu o Arch/Omarchy), Python 3.11+ y Node 18+. Tus propias claves de Anthropic (Claude Haiku), un bot de Telegram, Groq (para oír) y, si quieres, Google (calendario y Gmail).
 
+> **No hace falta buscar nada antes:** `setup.py` te guía paso a paso - cómo crear el bot con @BotFather, dónde sacar cada clave (con su enlace), comprueba cada una al momento, saca tu chat de Telegram solo cuando le mandas «hola» a tu bot y te pide la palabra clave. Las claves se escriben ocultas y lo opcional se salta con Enter.
+
 **1. El cerebro (portátil Linux)**
 
 ```bash
 git clone https://github.com/stefano-18/JARVIS.git ~/jarvis-repo && cd ~/jarvis-repo
-python3 setup.py           # pregunta tus datos y claves (solo en este equipo, permisos 600)
+curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash   # Hermes, el motor del chat (instalador oficial)
+python3 setup.py           # te guía con tus datos y claves (solo en este equipo, permisos 600)
 ./install.sh --dry-run     # enseña qué va a hacer, sin tocar nada
 ./install.sh
 ```
@@ -47,17 +50,18 @@ bash pc-windows/linux/instalar-pc-linux.sh <IP-del-portátil> --simulacion   # e
 bash pc-windows/linux/instalar-pc-linux.sh <IP-del-portátil>                # pide el secreto del hub
 ```
 
-**2b. O el PC con Windows** - en PowerShell, sin administrador:
+**2b. El PC con Windows** - en PowerShell, sin administrador:
 
 ```powershell
 .\pc-windows\instalar-pc.ps1 -Portatil <IP-del-portátil> -Simulacion   # enseña qué va a hacer
 .\pc-windows\instalar-pc.ps1 -Portatil <IP-del-portátil>
 ```
 
-**3. O instalación completa (Linux)** - JARVIS entero, cerebro y cuerpo, en el mismo equipo. Es la opción más sencilla si solo tienes un ordenador: el cerebro, el control del PC y la voz se hablan por `127.0.0.1`, sin SSH ni red entre máquinas y sin nada abierto hacia fuera.
+**3. Instalación completa (Linux)** - JARVIS entero, cerebro y cuerpo, en el mismo equipo. Es la opción más sencilla si solo tienes un ordenador: el cerebro, el control del PC y la voz se hablan por `127.0.0.1`, sin SSH ni red entre máquinas y sin nada abierto hacia fuera.
 
 ```bash
 git clone https://github.com/stefano-18/JARVIS.git ~/jarvis-repo && cd ~/jarvis-repo
+curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash   # Hermes, el motor del chat (instalador oficial)
 python3 setup.py --completa                          # tus datos y claves; las IP ya van a 127.0.0.1
 ./install.sh                                         # el cerebro
 bash pc-windows/linux/instalar-pc-linux.sh 127.0.0.1 # control del PC y voz; coge el secreto solo
@@ -67,7 +71,7 @@ bash pc-windows/linux/instalar-pc-linux.sh 127.0.0.1 # control del PC y voz; cog
 > **Es la opción más nueva:** cada pieza está probada en Linux, pero juntas en un mismo equipo aún no se han probado en una instalación desde cero. Si algo falla, `pc_do.py status` y el registro del agente dicen dónde.
 > **Si apagas ese PC, JARVIS se apaga con él** - Telegram deja de contestar hasta que lo enciendas. Con un portátil aparte (pasos 1 y 2) el cerebro sigue despierto y puede encender el PC a distancia.
 
-**4. O instalación completa (Windows)** - JARVIS entero en un solo PC con Windows. El cerebro necesita Linux, así que corre dentro de **WSL** (el Linux que trae Windows); el control del PC y la voz corren en Windows normal y se hablan con el cerebro por `127.0.0.1`.
+**4. Instalación completa (Windows)** - JARVIS entero en un solo PC con Windows. El cerebro necesita Linux, así que corre dentro de **WSL** (el Linux que trae Windows); el control del PC y la voz corren en Windows normal y se hablan con el cerebro por `127.0.0.1`.
 
 En PowerShell **como administrador**, una sola vez (luego reinicia):
 
@@ -81,6 +85,7 @@ En la terminal de **Ubuntu** (WSL):
 ```bash
 sudo apt install -y git python3 python3-venv nodejs npm
 git clone https://github.com/stefano-18/JARVIS.git ~/jarvis-repo && cd ~/jarvis-repo
+curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash   # Hermes, el motor del chat (instalador oficial)
 python3 setup.py --completa
 ./install.sh
 ```
@@ -104,7 +109,7 @@ abre Spotify
 
 > **Las claves nunca van al repositorio.** Las pide `setup.py` en tu propio equipo (ver `config/*.example`). Los datos personales - IPs, chat de Telegram, cuentas, rutas - están en el código como marcadores `{{...}}` que `install.sh` rellena con tu `config.toml`.
 > **Fija la IP del portátil** en tu router (en una FRITZ!Box: «usar siempre esta dirección IP»). El agente del PC se conecta a esa IP; si cambia, las órdenes no llegan.
-> **Palabra clave:** se pone con `jarvis_gate.py`. Sin ella, apagar, reiniciar o suspender no se ejecutan.
+> **Palabra clave:** te la pide `setup.py` al instalar (si la saltas, vuelve a ejecutarlo). Sin ella, apagar, reiniciar o suspender no se ejecutan.
 
 <details>
 <summary>Instalación manual del PC Linux</summary>
