@@ -63,9 +63,38 @@ python3 setup.py --completa                          # tus datos y claves; las I
 bash pc-windows/linux/instalar-pc-linux.sh 127.0.0.1 # control del PC y voz; coge el secreto solo
 ```
 
-> **La instalación completa solo funciona en Linux** (pensado para Omarchy / Arch + Hyprland). En Windows el cerebro no corre: ahí hacen falta dos equipos (pasos 1 y 2b).
+> **La instalación completa solo funciona en Linux** (pensado para Omarchy / Arch + Hyprland). En Windows, mira el paso 4.
 > **Es la opción más nueva:** cada pieza está probada en Linux, pero juntas en un mismo equipo aún no se han probado en una instalación desde cero. Si algo falla, `pc_do.py status` y el registro del agente dicen dónde.
 > **Si apagas ese PC, JARVIS se apaga con él** - Telegram deja de contestar hasta que lo enciendas. Con un portátil aparte (pasos 1 y 2) el cerebro sigue despierto y puede encender el PC a distancia.
+
+**4. O instalación completa (Windows)** - JARVIS entero en un solo PC con Windows. El cerebro necesita Linux, así que corre dentro de **WSL** (el Linux que trae Windows); el control del PC y la voz corren en Windows normal y se hablan con el cerebro por `127.0.0.1`.
+
+En PowerShell **como administrador**, una sola vez (luego reinicia):
+
+```powershell
+wsl --install -d Ubuntu
+Set-Content "$env:USERPROFILE\.wslconfig" "[wsl2]`nnetworkingMode=mirrored"   # Windows y WSL comparten 127.0.0.1
+```
+
+En la terminal de **Ubuntu** (WSL):
+
+```bash
+sudo apt install -y git python3 python3-venv nodejs npm
+git clone https://github.com/stefano-18/JARVIS.git ~/jarvis-repo && cd ~/jarvis-repo
+python3 setup.py --completa
+./install.sh
+```
+
+En **PowerShell normal**, desde la carpeta del repo (por ejemplo `\\wsl$\Ubuntu\home\<tu-usuario>\jarvis-repo`):
+
+```powershell
+.\pc-windows\instalar-pc.ps1 -Completa -Simulacion   # enseña qué va a hacer
+.\pc-windows\instalar-pc.ps1 -Completa               # control del PC y voz; coge el secreto de WSL solo
+```
+
+> **El cerebro no corre en Windows sin WSL:** usa servicios de Linux (systemd) y herramientas de red de Linux. Por eso va dentro de WSL; lo que se mueve por tu pantalla (apps, ventanas, voz) sí es Windows de verdad.
+> **WSL debe seguir encendido:** si Windows cierra WSL, JARVIS deja de contestar. Abrir la terminal de Ubuntu lo vuelve a arrancar.
+> **Es la opción menos probada:** las piezas de Windows (agente y voz) ya funcionaban en un PC con Windows, pero esta combinación con WSL todavía no se ha instalado desde cero. Si algo falla, `python3 ~/jarvis2/scripts/pc_do.py status` (en Ubuntu) dice si el agente de Windows ha llegado al cerebro.
 
 Luego escríbele a tu bot de Telegram:
 
