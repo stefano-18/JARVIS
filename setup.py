@@ -2,7 +2,7 @@
 """JARVIS: asistente de primera instalación. Pregunta los datos y las claves EN ESTE EQUIPO (las claves con entrada
 oculta) y escribe ~/.config/jarvis/config.toml, ~/.config/jarvis/anthropic.key, ~/jarvis2/.env y ~/.hermes/.env con
 permisos 600. Nunca manda nada a ningún sitio. Uso: python3 setup.py  (o  python3 setup.py --ayuda)
-Instalación completa en un PC con Linux (cerebro + agente + voz en el mismo equipo):  python3 setup.py --todo-en-uno"""
+Instalación completa en un PC con Linux (cerebro + agente + voz en el mismo equipo):  python3 setup.py --completa"""
 import getpass
 import os
 import secrets
@@ -43,7 +43,7 @@ def main():
         print(__doc__)
         return
     print("== JARVIS: primera instalación ==\nPulse Enter para dejar el valor entre corchetes.\n")
-    uno = "--todo-en-uno" in sys.argv  # cerebro, agente y voz en este mismo PC: todo por 127.0.0.1, nada abierto a la red
+    uno = bool({"--completa", "--todo-en-uno"} & set(sys.argv))  # cerebro, agente y voz en este mismo PC: todo por 127.0.0.1, nada abierto a la red
     c = {"nombre": pregunta("Su nombre (JARVIS le llamará así a veces)", "señor")}
     if uno:
         c.update({"pc_ip": "127.0.0.1", "portatil_ip": "127.0.0.1"})

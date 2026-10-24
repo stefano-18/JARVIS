@@ -2,7 +2,7 @@
 
 ## 24/10/2026 (tarde) - Instalación completa
 
-- **Instalación completa** - JARVIS entero (cerebro, control del PC y voz) en un solo PC con Linux: `python3 setup.py --todo-en-uno`, `./install.sh` y `bash pc-windows/linux/instalar-pc-linux.sh 127.0.0.1`. Todo por `127.0.0.1`, sin nada abierto a la red.
+- **Instalación completa** - JARVIS entero (cerebro, control del PC y voz) en un solo PC con Linux: `python3 setup.py --completa`, `./install.sh` y `bash pc-windows/linux/instalar-pc-linux.sh 127.0.0.1`. Todo por `127.0.0.1`, sin nada abierto a la red.
 
 ## 24/10/2026 - JARVIS vuelve a obedecer
 

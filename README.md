@@ -58,7 +58,7 @@ bash pc-windows/linux/instalar-pc-linux.sh <IP-del-portátil>                # p
 
 ```bash
 git clone https://github.com/stefano-18/JARVIS.git ~/jarvis-repo && cd ~/jarvis-repo
-python3 setup.py --todo-en-uno                       # tus datos y claves; las IP ya van a 127.0.0.1
+python3 setup.py --completa                          # tus datos y claves; las IP ya van a 127.0.0.1
 ./install.sh                                         # el cerebro
 bash pc-windows/linux/instalar-pc-linux.sh 127.0.0.1 # control del PC y voz; coge el secreto solo
 ```
