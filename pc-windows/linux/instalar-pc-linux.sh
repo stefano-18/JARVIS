@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # JARVIS: instala en un PC con Linux (Omarchy/Arch + Hyprland) el agente y la voz que el cerebro del portátil controla.
 # Uso:  bash pc-windows/linux/instalar-pc-linux.sh <IP-del-portátil> [--simulacion]
+# Todo en un solo PC (cerebro aquí mismo): <IP-del-portátil> = 127.0.0.1 y el secreto se coge solo.
 # El secreto del hub (el mismo JARVIS_REMOTE_SECRET del portátil) se pide por teclado y no se muestra.
 set -euo pipefail
 IP="${1:-}"; SIM=0; [ "${2:-}" = "--simulacion" ] && SIM=1
@@ -14,7 +15,11 @@ haz "systemctl --user enable --now ydotool.service || true"
 haz "python3 -m venv '$V' && '$V/bin/pip' install -q websockets psutil requests numpy edge-tts sherpa-onnx openwakeword pyaudio"
 
 if [ $SIM = 0 ] && [ ! -f "$C/agent.env" ]; then
-  read -rsp "Secreto del hub (JARVIS_REMOTE_SECRET del portátil): " S; echo
+  S=""
+  if [ "$IP" = 127.0.0.1 ] && [ -f ~/jarvis2/.env ]; then  # todo en un PC: el secreto ya lo dejó setup.py en este equipo
+    S=$(sed -n 's/^JARVIS_REMOTE_SECRET=//p' ~/jarvis2/.env | tr -d "\"'" | head -1)
+  fi
+  [ -n "$S" ] || { read -rsp "Secreto del hub (JARVIS_REMOTE_SECRET del portátil): " S; echo; }
   mkdir -p "$C"; umask 077
   printf 'DEVICE_ID=pc-01\nSECRET=%s\nHUB_HOST=%s\nHUB_PORT=18765\nSCREEN_C1=1\nMEDIA_VOLUME=1\nROOTS=%s\nYDOTOOL_SOCKET=/tmp/.ydotool_socket\n' \
     "$S" "$IP" "$HOME" > "$C/agent.env"

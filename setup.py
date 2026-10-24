@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """JARVIS: asistente de primera instalación. Pregunta los datos y las claves EN ESTE EQUIPO (las claves con entrada
 oculta) y escribe ~/.config/jarvis/config.toml, ~/.config/jarvis/anthropic.key, ~/jarvis2/.env y ~/.hermes/.env con
-permisos 600. Nunca manda nada a ningún sitio. Uso: python3 setup.py  (o  python3 setup.py --ayuda)"""
+permisos 600. Nunca manda nada a ningún sitio. Uso: python3 setup.py  (o  python3 setup.py --ayuda)
+Todo en un solo PC con Linux (cerebro + agente + voz en el mismo equipo):  python3 setup.py --todo-en-uno"""
 import getpass
 import os
 import secrets
@@ -42,18 +43,21 @@ def main():
         print(__doc__)
         return
     print("== JARVIS: primera instalación ==\nPulse Enter para dejar el valor entre corchetes.\n")
-    c = {
-        "nombre": pregunta("Su nombre (JARVIS le llamará así a veces)", "señor"),
-        "pc_ip": pregunta("IP del PC con Windows", "192.168.1.60"),
-        "portatil_ip": pregunta("IP de este portátil", "192.168.1.50"),
-        "chat_telegram": pregunta("Su id de chat de Telegram (se lo dice @userinfobot)"),
-        "win_usuario": pregunta("Su usuario de Windows en el PC", "usuario"),
-        "cuenta_steam_1": pregunta("Cuenta principal de Steam (opcional)", "cuenta1"),
-        "cuenta_steam_2": pregunta("Cuenta secundaria de Steam (opcional)", "cuenta2"),
-        "zona": pregunta("Zona horaria", "Europe/Madrid"),
-    }
-    pc_si = pregunta("¿El PC con Windows se conectará a este equipo por la red? (s/n)", "s").lower().startswith("s")
-    # sin PC: los servicios solo escuchan en este equipo. Con PC: en la red de casa (limítelo con el cortafuegos, ver docs/PENDIENTE.md)
+    uno = "--todo-en-uno" in sys.argv  # cerebro, agente y voz en este mismo PC: todo por 127.0.0.1, nada abierto a la red
+    c = {"nombre": pregunta("Su nombre (JARVIS le llamará así a veces)", "señor")}
+    if uno:
+        c.update({"pc_ip": "127.0.0.1", "portatil_ip": "127.0.0.1"})
+    else:
+        c.update({"pc_ip": pregunta("IP del PC que va a controlar", "192.168.1.60"),
+                  "portatil_ip": pregunta("IP de este portátil", "192.168.1.50")})
+    c["chat_telegram"] = pregunta("Su id de chat de Telegram (se lo dice @userinfobot)")
+    if not uno:
+        c["win_usuario"] = pregunta("Su usuario de Windows en el PC (si es Linux, Enter)", "usuario")
+    c.update({"cuenta_steam_1": pregunta("Cuenta principal de Steam (opcional)", "cuenta1"),
+              "cuenta_steam_2": pregunta("Cuenta secundaria de Steam (opcional)", "cuenta2"),
+              "zona": pregunta("Zona horaria", "Europe/Madrid")})
+    pc_si = not uno and pregunta("¿El PC se conectará a este equipo por la red? (s/n)", "s").lower().startswith("s")
+    # sin PC o todo en uno: los servicios solo escuchan en este equipo. Con PC: en la red de casa (limítelo con el cortafuegos, ver docs/PENDIENTE.md)
     c["escucha_ip"] = "0.0.0.0" if pc_si else "127.0.0.1"
     toml = "# JARVIS: configuración de este equipo (sin claves). Generado por setup.py\n" + "".join(
         f'{k} = "{v}"\n' for k, v in c.items()) + "silencio_desde = 23\nsilencio_hasta = 8\ntope_global_usd = 0.50\naviso_gasto_usd = 0.30\nsolo_claude = true\n"
@@ -62,7 +66,7 @@ def main():
     anth = secreto("Clave de Anthropic (Claude)")
     tg = secreto("Token del bot de Telegram (de @BotFather)")
     groq = secreto("Clave de Groq (para oír la voz)")
-    mac = pregunta("MAC del PC para encenderlo a distancia (opcional, p. ej. 00:11:22:33:44:55)")
+    mac = "" if uno else pregunta("MAC del PC para encenderlo a distancia (opcional, p. ej. 00:11:22:33:44:55)")
     if anth:
         escribe(os.path.join(CFG, "anthropic.key"), anth + "\n")
     pon_env(os.path.join(H, "jarvis2/.env"), {"GROQ_API_KEY": groq, "TELEGRAM_BOT_TOKEN": tg, "TELEGRAM_ALLOWED_CHAT_IDS": c["chat_telegram"],
@@ -73,6 +77,8 @@ def main():
     if not os.path.exists(os.path.join(CFG, "firma.key")):
         escribe(os.path.join(CFG, "firma.key"), secrets.token_hex(32))
     print("\nListo. Siguiente paso: ./install.sh  (y después ponga su palabra clave con jarvis_gate.py).")
+    if uno:
+        print("Y para el control del PC y la voz:  bash pc-windows/linux/instalar-pc-linux.sh 127.0.0.1")
 
 
 if __name__ == "__main__":

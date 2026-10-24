@@ -28,7 +28,7 @@ jarvis-repo/
 
 ## Instalación
 
-**Requiere:** un portátil o servidor con Linux (Ubuntu/Lubuntu o Arch/Omarchy), Python 3.11+ y Node 18+. Tus propias claves de Anthropic (Claude Haiku), un bot de Telegram, Groq (para oír) y, si quieres, Google (calendario y Gmail).
+**Requiere:** un portátil, servidor o PC con Linux (Ubuntu/Lubuntu o Arch/Omarchy), Python 3.11+ y Node 18+. Tus propias claves de Anthropic (Claude Haiku), un bot de Telegram, Groq (para oír) y, si quieres, Google (calendario y Gmail).
 
 **1. El cerebro (portátil Linux)**
 
@@ -53,6 +53,19 @@ bash pc-windows/linux/instalar-pc-linux.sh <IP-del-portátil>                # p
 .\pc-windows\instalar-pc.ps1 -Portatil <IP-del-portátil> -Simulacion   # enseña qué va a hacer
 .\pc-windows\instalar-pc.ps1 -Portatil <IP-del-portátil>
 ```
+
+**3. O todo en un solo PC (Linux)** - la opción más sencilla si solo tienes un ordenador: el cerebro, el control del PC y la voz corren en el mismo equipo y se hablan por `127.0.0.1`, sin red entre máquinas ni nada abierto hacia fuera.
+
+```bash
+git clone https://github.com/stefano-18/JARVIS.git ~/jarvis-repo && cd ~/jarvis-repo
+python3 setup.py --todo-en-uno                       # tus datos y claves; las IP ya van a 127.0.0.1
+./install.sh                                         # el cerebro
+bash pc-windows/linux/instalar-pc-linux.sh 127.0.0.1 # control del PC y voz; coge el secreto solo
+```
+
+> **Todo en uno solo funciona en Linux** (pensado para Omarchy / Arch + Hyprland). En Windows el cerebro no corre: ahí hacen falta dos equipos (pasos 1 y 2b).
+> **Es la opción más nueva:** cada pieza está probada en Linux, pero juntas en un mismo equipo aún no se han probado en una instalación desde cero. Si algo falla, `pc_do.py status` y el registro del agente dicen dónde.
+> **Si apagas ese PC, JARVIS se apaga con él** - Telegram deja de contestar hasta que lo enciendas. Con un portátil aparte (pasos 1 y 2) el cerebro sigue despierto y puede encender el PC a distancia.
 
 Luego escríbele a tu bot de Telegram:
 
