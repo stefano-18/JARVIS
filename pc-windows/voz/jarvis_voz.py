@@ -10,6 +10,8 @@ JARVIS voz (PC): oido + boca de JARVIS en el PC, sin ventanas.
   para que el fondo de Wallpaper Engine ilumine los bordes solo con voz real.
 Uso extra:  pythonw jarvis_voz.py --send hablando|reposo|escuchando   (prueba del fondo)
             python  jarvis_voz.py --status                           (clientes del relay)
+            python  jarvis_voz.py --hotkey                           (Linux: lo lanza el atajo de Hyprland)
+Funciona en Windows y en Linux (Omarchy: PipeWire + Hyprland).
 """
 import asyncio
 import base64
@@ -37,6 +39,8 @@ import numpy as np
 import websockets
 
 BASE = os.path.dirname(os.path.abspath(__file__))
+WIN = sys.platform == "win32"
+MIC_NAME = os.getenv("JARVIS_MIC", "fifine")   # Linux: parte del nombre del micro en PipeWire
 WS_URL = os.getenv("JARVIS_WS_URL", "ws://{{PORTATIL_IP}}:8765")
 RELAY_HOST, RELAY_PORT = "127.0.0.1", 8770
 RATE, CHUNK = 16000, 1280            # 80 ms, lo que pide openWakeWord
@@ -100,7 +104,9 @@ async def relay_handler(ws):
                 obj = json.loads(msg)
             except Exception:
                 continue
-            if obj.get("cmd") == "clients":
+            if obj.get("cmd") == "hotkey":     # Linux: atajo de Hyprland (jarvis_voz.py --hotkey)
+                HOTKEY["hit"] = True
+            elif obj.get("cmd") == "clients":
                 await ws.send(json.dumps({"clients": len(clients) - 1}))
             elif "state" in obj or "level" in obj:
                 if obj.get("state"):
@@ -127,6 +133,69 @@ async def set_state(s):
     if state["s"] != s:
         state["s"] = s
         await broadcast({"state": s})
+        bordes(s)
+
+
+# Linux: los bordes de la ventana activa se iluminan como el fondo de Windows (azul escucha, dorado habla)
+BORDES = {"escuchando": ("rgba(00b4ffff)", "rgba(7a5cffff)"), "hablando": ("rgba(ffc400ff)", "rgba(ff6a00ff)")}
+BORDE_ORIG = {"c": None}
+
+
+def _borde_actual():
+    try:
+        out = subprocess.run(["hyprctl", "getoption", "general:col.active_border"], capture_output=True, text=True, timeout=3).stdout
+        m = re.search(r"gradient data:\s*((?:[0-9a-f]{8}\s+)+)(\d+)deg", out)
+        cols = tuple("rgba(%s%s)" % (c[2:], c[:2]) for c in m.group(1).split())   # AARRGGBB -> rgba(RRGGBBAA)
+        return cols, int(m.group(2))
+    except Exception:
+        return None
+
+
+BORDE_F = os.path.expanduser("~/.local/state/jarvis/borde_original.json")
+
+
+def _aplica_borde(cols, ang):
+    lua = 'hl.config({ general = { col = { active_border = { colors = {%s}, angle = %d } } } })' % (
+        ", ".join('"%s"' % c for c in cols), ang)
+    subprocess.Popen(["hyprctl", "eval", lua], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def bordes_al_arrancar():
+    """Si la voz se cortó mientras hablaba o escuchaba, el borde se quedó azul/dorado: le devuelve SU color."""
+    if WIN:
+        return
+    cur = _borde_actual()
+    if cur and cur[0] in BORDES.values():
+        try:
+            g = json.load(open(BORDE_F, encoding="utf-8"))
+            _aplica_borde(tuple(g["cols"]), int(g["ang"]))
+            log("bordes: restaurado su color tras un corte")
+        except (OSError, ValueError, KeyError):
+            pass
+
+
+def bordes(s):
+    if WIN or os.environ.get("JARVIS_BORDES", "1") == "0":
+        return
+    if BORDE_ORIG["c"] is None or (s in BORDES and not BORDE_ORIG.get("activo")):
+        BORDE_ORIG["c"] = _borde_actual() or BORDE_ORIG["c"] or (("rgba(00e676ee)", "rgba(00f2feee)"), 45)   # su tema actual
+        try:
+            os.makedirs(os.path.dirname(BORDE_F), exist_ok=True)
+            json.dump({"cols": list(BORDE_ORIG["c"][0]), "ang": BORDE_ORIG["c"][1]}, open(BORDE_F, "w", encoding="utf-8"))
+        except OSError:
+            pass
+    BORDE_ORIG["activo"] = s in BORDES
+    if s not in BORDES:
+        actual = _borde_actual()
+        if actual and actual[0] not in BORDES.values():
+            return          # el borde ya no es el nuestro (p. ej. ha cambiado de tema mientras hablaba): no se toca
+    cols, ang = (BORDES[s], 45) if s in BORDES else BORDE_ORIG["c"]
+    lua = 'hl.config({ general = { col = { active_border = { colors = {%s}, angle = %d } } } })' % (
+        ", ".join('"%s"' % c for c in cols), ang)
+    try:
+        subprocess.Popen(["hyprctl", "eval", lua], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------- audio salida
@@ -146,6 +215,8 @@ PLAYER = {"stop": False}               # True = el senor le ha interrumpido: cal
 
 
 def play_file(path):
+    if not WIN:
+        return play_file_linux(path)
     alias = "jx%d" % random.randint(1000, 9999)
     err = _mci('open "%s" type mpegvideo alias %s' % (path, alias))
     if err:
@@ -173,6 +244,29 @@ def play_file(path):
         if time.time() - t0 > 0.3 and _mci_q("status %s mode" % alias) in ("stopped", ""):
             break                       # termino de sonar
     _mci("close %s" % alias)
+
+
+def play_file_linux(path):
+    """ffplay por PipeWire; se puede cortar si le hablan encima."""
+    if PLAYER["stop"]:
+        return
+    if MAIN_LOOP["l"]:
+        asyncio.run_coroutine_threadsafe(set_state("hablando"), MAIN_LOOP["l"])
+    vol = max(0, min(100, PLAY_VOLUME // 10))
+    try:
+        pr = subprocess.Popen(["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", "-volume", str(vol), path],
+                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception as e:
+        log("no se pudo reproducir: %s" % e)
+        return
+    t0 = time.time()
+    while pr.poll() is None and time.time() - t0 < 60:
+        time.sleep(0.04)
+        if PLAYER["stop"]:
+            break
+    if pr.poll() is None:
+        pr.kill()
+        pr.wait()
 
 
 def play_bytes(data):
@@ -205,6 +299,9 @@ def play_bytes(data):
 
 
 def speak_sapi(text):
+    if not WIN:
+        log("sin voz para: %s" % text[:60])
+        return
     safe = text.replace("'", "''")
     ps = ("Add-Type -AssemblyName System.Speech;"
           "$s=New-Object System.Speech.Synthesis.SpeechSynthesizer;"
@@ -309,6 +406,37 @@ VOZ_FILE = os.path.join(BASE, "voz.txt")
 CHANGE_VOICE = re.compile(r"\b(cambia|cambiar|cambiame|pon|prueba)\b.*\b(voz)\b|\b(otra|siguiente) voz\b")
 
 
+RITMO_FILE = os.path.join(BASE, "ritmo.txt")
+RITMOS = ["-8%", "-20%", "-30%"]                 # normal (algo pausado), despacio, muy despacio
+LAST = {"texto": ""}
+CONTROL = [("para", re.compile(r"^(para|parate|callate|calla|silencio|basta|ya vale|deja de hablar|stop)$")),
+           ("repite", re.compile(r"^(repite(lo)?|repitelo|que has dicho|puedes repetir|otra vez|no te he oido|como)$")),
+           ("despacio", re.compile(r"^(mas despacio|habla mas despacio|mas lento|despacio)$")),
+           ("rapido", re.compile(r"^(mas rapido|habla mas rapido|velocidad normal|habla normal)$"))]
+
+
+def ritmo():
+    try:
+        r = open(RITMO_FILE, encoding="utf-8").read().strip()
+        return r if r in RITMOS else RITMOS[0]
+    except OSError:
+        return RITMOS[0]
+
+
+def control_voz(heard):
+    """Órdenes cortas sobre la propia voz. Devuelve 'para' | 'repite' | 'despacio' | 'rapido' | None."""
+    j = " ".join(w for w in _norm(heard) if w not in ("jarvis", "hey", "oye", "ok", "por", "favor", "senor", "eh", "vale"))
+    for nombre, rx in CONTROL:
+        if rx.match(j):
+            if nombre in ("despacio", "rapido"):
+                i = RITMOS.index(ritmo())
+                i = min(i + 1, len(RITMOS) - 1) if nombre == "despacio" else 0
+                with open(RITMO_FILE, "w", encoding="utf-8") as f:
+                    f.write(RITMOS[i])
+            return nombre
+    return None
+
+
 def edge_voice():
     try:
         v = open(VOZ_FILE, encoding="utf-8").read().strip()
@@ -333,7 +461,7 @@ def edge_to_file(text, path):
     try:
         import edge_tts
         try:
-            asyncio.run(asyncio.wait_for(edge_tts.Communicate(text, edge_voice(), rate="-8%", pitch="-6Hz").save(path), 12))   # mas grave y pausada
+            asyncio.run(asyncio.wait_for(edge_tts.Communicate(text, edge_voice(), rate=ritmo(), pitch="-6Hz").save(path), 12))   # mas grave y pausada
         except Exception as e1:
             log("edge-tts 1er intento: %s" % str(e1)[:100])
             time.sleep(0.5)
@@ -367,7 +495,7 @@ CACHE = os.path.join(BASE, "cache")
 def synth(text):
     """Devuelve (ruta, motor). Las frases repetidas salen de la cache al instante."""
     import hashlib, shutil
-    key = hashlib.md5((edge_voice() + "|" + text).encode("utf-8")).hexdigest()
+    key = hashlib.md5((edge_voice() + "|" + ritmo() + "|" + text).encode("utf-8")).hexdigest()
     hit = os.path.join(CACHE, key + ".mp3")
     if os.path.exists(hit):
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
@@ -633,6 +761,8 @@ class Voice:
             if t != "mic_level":
                 log("<- %s" % json.dumps({k: (v[:60] if isinstance(v, str) else v)
                                           for k, v in obj.items()})[:300])
+            if t == "reply" and isinstance(obj.get("text"), str) and obj["text"].strip() and not self.mute:
+                LAST["texto"] = obj["text"].strip()     # para «repite»
             if t == "reply" and self.sent_t:
                 log("respuesta en %.1f s" % (time.time() - self.sent_t))
             if t in ("transcript", "stt", "voice_result"):
@@ -646,6 +776,16 @@ class Voice:
                     else:
                         self.mute = True        # no decir lo que conteste el cerebro
                         log("no era mi nombre: %s" % heard[:40])
+                orden = control_voz(heard)
+                if orden:                       # «para», «repite», «más despacio»: lo resuelve el PC al instante
+                    self.mute, self.awaiting = True, False
+                    log("control de voz: %s" % orden)
+                    if orden == "para":
+                        PLAYER["stop"] = True
+                        self.conv = False
+                    elif LAST["texto"]:
+                        asyncio.ensure_future(self.play(speak, LAST["texto"]))
+                    continue
                 if is_goodbye(heard):
                     self.end = True
                 elif CHANGE_VOICE.search(" ".join(_norm(heard))):
@@ -745,8 +885,104 @@ def _lev(a, b):
     return prev[-1]
 
 
+LINUX_NOT_GAMES = ("firefox", "chromium", "google-chrome", "brave-browser", "mpv", "vlc", "spotify", "discord",
+                   "steam", "heroic", "code", "cursor", "alacritty", "kitty", "ghostty", "nautilus")
+
+
+def hypr_env():
+    """Al arrancar con el PC, el servicio puede no tener aún la sesión de Hyprland: la busca él mismo."""
+    run = os.environ.get("XDG_RUNTIME_DIR", "/run/user/%d" % os.getuid())
+    sesiones = sorted(glob.glob(os.path.join(run, "hypr", "*", ".socket.sock")), key=os.path.getmtime)
+    if sesiones and not os.path.exists(os.path.join(run, "hypr", os.environ.get("HYPRLAND_INSTANCE_SIGNATURE", "-"),
+                                                   ".socket.sock")):
+        os.environ["HYPRLAND_INSTANCE_SIGNATURE"] = os.path.basename(os.path.dirname(sesiones[-1]))
+
+
+def game_thread_linux():
+    """Hyprland: juego = ventana de Steam (steam_app_*) o cualquier ventana a pantalla completa."""
+    while True:
+        hypr_env()
+        on, exe = False, ""
+        try:
+            r = subprocess.run(["hyprctl", "activewindow", "-j"], capture_output=True, text=True, timeout=3)
+            w = json.loads(r.stdout or "{}") or {}
+            exe = str(w.get("class", "")).lower()
+            if exe.startswith("steam_app_"):
+                on = True
+            elif exe and exe not in LINUX_NOT_GAMES:
+                on = w.get("fullscreen") == 2      # 2 = pantalla completa real (1 es solo maximizada)
+        except Exception as e:
+            log("modo juego: %s" % e)
+        if on != GAME["on"]:
+            GAME["on"], GAME["exe"] = on, exe
+            log("modo juego %s" % ("ACTIVADO (%s): solo Ctrl+Alt+J" % exe if on else "desactivado: vuelve Hey JARVIS"))
+        try:  # tiempo de juego: cuenta mientras haya un juego abierto, aunque no sea la ventana de delante
+            cl = json.loads(subprocess.run(["hyprctl", "clients", "-j"], capture_output=True, text=True, timeout=3).stdout or "[]")
+            juego = next(((c.get("class", ""), c.get("title", "")) for c in cl if str(c.get("class", "")).startswith("steam_app_")
+                          and not NO_JUEGO.search(c.get("title", ""))), "")
+        except Exception:
+            juego = ""
+        if juego:
+            partida_sigue(*juego)
+        elif ACTUAL["ini"]:
+            partida_fin()
+        time.sleep(1.5)
+
+
+PARTIDAS = os.path.expanduser("~/.local/state/jarvis/juego.jsonl")      # «¿cuánto he jugado?»
+NO_JUEGO = re.compile(r"wallpaper engine|steamwebhelper|proton|steam linux runtime", re.I)   # van por Steam pero no son juegos
+ACTUAL = {"ini": 0.0, "juego": "", "visto": 0.0}
+
+
+def _nombre_juego(clase, titulo=""):
+    """steam_app_252950 -> nombre del juego (manifiesto de Steam); si no, el titulo de SU ventana sin lo de entre paréntesis."""
+    m = re.match(r"steam_app_(\d+)", clase or "")
+    if m:
+        try:
+            t = open(os.path.expanduser("~/.local/share/Steam/steamapps/appmanifest_%s.acf" % m.group(1)),
+                     encoding="utf-8", errors="replace").read()
+            n = re.search(r'"name"\s+"([^"]+)"', t)
+            if n:
+                return n.group(1)
+        except OSError:
+            pass
+    return re.sub(r"\s*[\(\[].*$", "", titulo or "").strip() or clase
+
+
+def partida_sigue(clase, titulo=""):
+    now = time.time()
+    if not ACTUAL["ini"]:
+        ACTUAL.update(ini=now, juego=_nombre_juego(clase, titulo))
+    if now - ACTUAL.get("escrito", 0) >= 60:   # la partida en curso, para «¿cuánto he jugado?» (cada minuto)
+        ACTUAL["escrito"] = now
+        try:
+            os.makedirs(os.path.dirname(PARTIDAS), exist_ok=True)
+            with open(PARTIDAS.replace(".jsonl", "_actual.json"), "w", encoding="utf-8") as f:
+                json.dump({"ini": round(ACTUAL["ini"]), "juego": ACTUAL["juego"]}, f)
+        except OSError:
+            pass
+    ACTUAL["visto"] = now
+
+
+def partida_fin():
+    if ACTUAL["ini"] and ACTUAL["visto"] - ACTUAL["ini"] >= 60:      # menos de 1 min no cuenta
+        try:
+            os.makedirs(os.path.dirname(PARTIDAS), exist_ok=True)
+            with open(PARTIDAS, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"ini": round(ACTUAL["ini"]), "fin": round(ACTUAL["visto"]), "juego": ACTUAL["juego"]}) + "\n")
+        except OSError as e:
+            log("partidas: %s" % e)
+    try:
+        os.remove(PARTIDAS.replace(".jsonl", "_actual.json"))
+    except OSError:
+        pass
+    ACTUAL.update(ini=0.0, juego="", visto=0.0, escrito=0.0)
+
+
 def game_thread():
     """Mira cada 1,5 s si hay un juego en primer plano (carpeta de juegos o pantalla completa)."""
+    if not WIN:
+        return game_thread_linux()
     from ctypes import wintypes
     u32, k32 = ctypes.windll.user32, ctypes.windll.kernel32
     u32.GetForegroundWindow.restype = wintypes.HWND
@@ -806,6 +1042,9 @@ def game_thread():
 
 def hotkey_thread():
     """Ctrl+Alt+J en cualquier momento (tambien jugando) = "Hey JARVIS"."""
+    if not WIN:
+        log("atajo: en Linux lo da Hyprland (jarvis_voz.py --hotkey)")
+        return
     from ctypes import wintypes
     u32 = ctypes.windll.user32
     if not u32.RegisterHotKey(None, 1, 0x0002 | 0x0001 | 0x4000, ord("J")):
@@ -831,6 +1070,9 @@ def beep():
                 w.setsampwidth(2)
                 w.setframerate(RATE)
                 w.writeframes(w8.tobytes())
+        if not WIN:
+            subprocess.Popen(["pw-play", f], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return
         import winsound
         winsound.PlaySound(f, winsound.SND_FILENAME | winsound.SND_ASYNC)
     except Exception as e:
@@ -838,7 +1080,48 @@ def beep():
 
 
 # ---------------------------------------------------------------- microfono
+class PwMic:
+    """Linux: micro por pw-record (PipeWire), 16 kHz mono; misma interfaz que el stream de PyAudio."""
+
+    def __init__(self):
+        self.proc = None
+        self.start()
+
+    def target(self):
+        try:
+            r = subprocess.run(["pactl", "list", "short", "sources"], capture_output=True, text=True, timeout=5)
+            for ln in r.stdout.splitlines():
+                name = ln.split("\t")[1] if "\t" in ln else ""
+                if MIC_NAME.lower() in name.lower() and not name.endswith(".monitor"):
+                    return name
+        except Exception as e:
+            log("lista de micros: %s" % e)
+        return None
+
+    def start(self):
+        tgt = self.target()
+        cmd = ["pw-record", "--rate", str(RATE), "--channels", "1", "--format", "s16"]
+        if tgt:
+            cmd += ["--target", tgt]
+        self.proc = subprocess.Popen(cmd + ["-"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        log("microfono: %s" % (tgt or "el de por defecto"))
+
+    def read(self, n, exception_on_overflow=False):
+        want = n * 2
+        buf = b""
+        while len(buf) < want:
+            chunk = self.proc.stdout.read(want - len(buf))
+            if not chunk:
+                self.proc.kill()
+                self.start()
+                raise IOError("pw-record se cerro; lo reabro")
+            buf += chunk
+        return buf
+
+
 def open_mic():
+    if not WIN:
+        return PwMic()
     import pyaudio
     p = pyaudio.PyAudio()
     idx = None
@@ -854,6 +1137,52 @@ def open_mic():
         return p.open(**kw)
 
 
+KWS_DIR = os.getenv("JARVIS_KWS_DIR", os.path.expanduser(
+    "~/.local/share/jarvis/models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"))
+KWS_TH = float(os.getenv("JARVIS_KWS_THRESHOLD", "0.12"))   # el valor afinado con su voz en Windows
+
+
+def load_kws():
+    """Segundo oido (sherpa-onnx): "ok jarvis", "jarvis" a secas y como lo dice un hispano (harvis, yarvis).
+    Las frases estan en jarvis_keywords.txt junto al modelo."""
+    try:
+        import sherpa_onnx
+        f = lambda p: glob.glob(os.path.join(KWS_DIR, p))[0]
+        k = sherpa_onnx.KeywordSpotter(
+            tokens=os.path.join(KWS_DIR, "tokens.txt"), encoder=f("encoder*int8.onnx"), decoder=f("decoder*int8.onnx"),
+            joiner=f("joiner*int8.onnx"), keywords_file=os.path.join(KWS_DIR, "jarvis_keywords.txt"),
+            num_threads=1, keywords_threshold=KWS_TH)
+        log("segundo oido activo: ok jarvis / jarvis")
+        return k
+    except Exception as e:
+        log("sin segundo oido (%s): solo hey jarvis" % e)
+        return None
+
+
+class ComboWake:
+    """Misma interfaz que openWakeWord: predict(audio int16) -> {nombre: puntos}; reset()."""
+
+    def __init__(self, oww, kws):
+        self.oww, self.kws = oww, kws
+        self.st = kws.create_stream()
+
+    def predict(self, a):
+        p = dict(self.oww.predict(a))
+        self.st.accept_waveform(RATE, a.astype(np.float32) / 32768.0)
+        while self.kws.is_ready(self.st):
+            self.kws.decode_stream(self.st)
+        hit = self.kws.get_result(self.st)
+        if hit:
+            self.kws.reset_stream(self.st)
+            p["hey_jarvis"] = 1.0
+            log("me llamo (%s)" % hit)
+        return p
+
+    def reset(self):
+        self.oww.reset()
+        self.kws.reset_stream(self.st)
+
+
 def load_wake():
     try:
         import openwakeword.utils
@@ -864,7 +1193,8 @@ def load_wake():
             pass
         m = Model(wakeword_models=["hey_jarvis"], inference_framework="onnx")
         log("wake word activo: hey jarvis")
-        return m
+        kws = load_kws()
+        return ComboWake(m, kws) if kws else m
     except Exception as e:
         log("sin openWakeWord (%s): modo voz directa" % e)
         return None
@@ -1080,6 +1410,10 @@ async def main():
         log("ya hay otra instancia corriendo; salgo")
         return
     loop = asyncio.get_running_loop()
+    try:
+        bordes_al_arrancar()
+    except Exception:
+        pass
     voice = Voice()
     voice.loop = loop
     MAIN_LOOP["l"] = loop
@@ -1117,7 +1451,10 @@ async def main():
 async def tool(arg):
     async with websockets.connect("ws://%s:%d" % (RELAY_HOST, RELAY_PORT), open_timeout=5) as ws:
         await ws.recv()
-        if arg == "--status":
+        if arg == "--hotkey":
+            await ws.send(json.dumps({"cmd": "hotkey"}))
+            await asyncio.sleep(0.2)
+        elif arg == "--status":
             await ws.send(json.dumps({"cmd": "clients"}))
             print(await asyncio.wait_for(ws.recv(), 5))
         else:
@@ -1130,6 +1467,8 @@ if __name__ == "__main__":
         asyncio.run(tool(sys.argv[2]))
     elif len(sys.argv) > 1 and sys.argv[1] == "--status":
         asyncio.run(tool("--status"))
+    elif len(sys.argv) > 1 and sys.argv[1] == "--hotkey":
+        asyncio.run(tool("--hotkey"))
     elif len(sys.argv) > 1 and sys.argv[1] == "--make-acks":
         make_acks()
     elif len(sys.argv) > 1 and sys.argv[1] == "--voz-test":

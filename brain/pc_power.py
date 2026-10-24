@@ -41,7 +41,7 @@ def load_env():
 
 def ping_ok(ip):
     try:
-        r = subprocess.run(["ping", "-n", "1", "-w", "1000", ip],
+        r = subprocess.run((["ping", "-n", "1", "-w", "1000", ip] if os.name == "nt" else ["ping", "-c", "1", "-W", "1", ip]),
                            capture_output=True, text=True, timeout=10)
         return r.returncode == 0
     except Exception:

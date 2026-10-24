@@ -15,3 +15,5 @@ cuenta_steam_2 = "cuenta2"
 win_usuario = "usuario"
 nombre_pc = "MI-PC"
 nombre = "Su nombre"
+# IP en la que escuchan la voz/HUD y el hub. 127.0.0.1 = solo este equipo; 0.0.0.0 = también la red de casa (el PC)
+escucha_ip = "127.0.0.1"

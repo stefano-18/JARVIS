@@ -39,7 +39,7 @@ def main():
         "jarvis-agenda": (lambda: activo("jarvis-agenda", True), ["systemctl", "--user", "restart", "jarvis-agenda"]),
     }
     pc_on = jx.pc_encendido()
-    if pc_on:
+    if pc_on and jx.conf().get("vigilar_agente_pc", True):   # en False mientras el PC (Omarchy) no tenga agente Linux
         comprobar["agente del PC"] = (agente_conectado, None)
     lineas = []
     for nombre, (prueba, reinicio) in comprobar.items():
@@ -70,6 +70,17 @@ def main():
     if not pc_on:
         est.pop("agente del PC", None)
     jx.guardar_json("vigilante.json", est)
+    try:  # saludo del día y resumen de la tarde por voz (en segundo plano, una vez al día)
+        subprocess.Popen([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "jx_bienvenida.py")],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        n = jx.reintenta_tg()
+        if n:
+            lineas.append(f"avisos reenviados: {n}")
+    except Exception:  # noqa: BLE001
+        pass
     print("; ".join(lineas))
 
 

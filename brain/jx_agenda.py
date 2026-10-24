@@ -62,10 +62,30 @@ def recordatorios():
         tablon("agenda", f"recordatorio entregado: {r['texto'][:60]}")
 
 
+def _noticias(n=3):  # arreglo 100: titulares del dia (Google News RSS, en espanol)
+    import urllib.request, re as _re, html as _html
+    try:
+        req = urllib.request.Request("https://news.google.com/rss?hl=es-419&gl=ES&ceid=ES:es",
+                                     headers={"User-Agent": "Mozilla/5.0"})
+        xml = urllib.request.urlopen(req, timeout=12).read().decode("utf-8", "replace")
+    except Exception:  # noqa: BLE001
+        return ""
+    tit = _re.findall(r"<item>.*?<title>(.*?)</title>", xml, _re.S)
+    out = []
+    for x in tit[:n]:
+        x = _html.unescape(_re.sub(r"\s+-\s+[^-]+$", "", x)).strip()
+        if x:
+            out.append(x)
+    return "; ".join(out)
+
+
 def resumen_manana(forzar=False):
     if jx.leer_json("ajustes.json", {}).get("resumen") is False and not forzar:
         return None
     partes = [f"Buenos días, señor. Hoy es {jx.DIAS[jx.ahora().weekday()]} {jx.ahora().day} de {jx.MESES[jx.ahora().month - 1]}."]
+    _n = _noticias()
+    if _n:
+        partes.append("Las noticias de hoy: " + _n + ".")
     c = gjx("cal-list", "1")
     if c.get("ok"):
         hoy = jx.ahora().date().isoformat()
@@ -75,14 +95,8 @@ def resumen_manana(forzar=False):
         partes.append("Agenda: no he podido leer el calendario.")
     m = gjx("mail-list", "is:unread in:inbox", "50")
     partes.append(f"Correos sin leer: {len(m['correos'])}{'+' if len(m['correos']) >= 50 else ''}." if m.get("ok") else "Correo: no he podido leerlo.")
-    ayer = jx.gastado(jx._inicio_dia(1), jx._inicio_dia())
-    partes.append(f"Gasto de ayer: {ayer:.3f} USD.")
-    rs = [r for r in jx.recordatorios() if r["ts"] < jx._inicio_dia(-1)]
-    if rs:
-        partes.append(f"Recordatorios de hoy: {len(rs)}.")
-    partes.append("(Para no recibirlo: «quita el resumen».)")
-    txt = "\n".join(partes)
-    jx.tg(txt, urgente=True)
+    txt = " ".join(partes)
+    jx.tg_voz(txt, urgente=True, caption=False)  # arreglo 100: solo audio, sin texto
     tablon("agenda", "resumen de la mañana enviado")
     return txt
 

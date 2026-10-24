@@ -122,6 +122,11 @@ def _tg_post(metodo, campos, archivo=None, campo="document"):
 
 def tg(texto, urgente=False, archivo=None):
     """Manda a SU chat. Fuera de urgentes, en horas de silencio se guarda y sale a las 8."""
+    if not archivo and texto:  # para «repíteme el último aviso»
+        try:
+            guardar_json("ultimo_aviso.json", {"texto": str(texto)[:600], "cuando": ahora().strftime("%H:%M")})
+        except Exception:  # noqa: BLE001
+            pass
     if not urgente and en_silencio():
         cola = leer_json("cola_silencio.json", [])
         cola.append({"texto": texto, "archivo": archivo and [archivo[0], archivo[1].decode("utf-8", "replace"), archivo[2]]})
@@ -132,10 +137,29 @@ def tg(texto, urgente=False, archivo=None):
     ok = True
     for i in range(0, max(len(texto), 1), 3900):
         ok = _tg_post("sendMessage", {"text": texto[i:i + 3900]}) and ok
+    if not ok:  # sin red (cortes del Wi-Fi): se guarda y el vigilante lo reintenta cada 5 min
+        cola = leer_json("cola_reintento.json", [])
+        cola.append({"texto": texto, "ts": int(time.time())})
+        guardar_json("cola_reintento.json", cola[-30:])
     return ok
 
 
-def tg_voz(texto, urgente=True):
+def reintenta_tg():
+    """Manda lo que no salió por falta de red (lo de más de 24 h se descarta). Devuelve cuántos salieron."""
+    cola = leer_json("cola_reintento.json", [])
+    if not cola:
+        return 0
+    guardar_json("cola_reintento.json", [])
+    hechos = 0
+    for m in cola:
+        if time.time() - m.get("ts", 0) > 86400:
+            continue
+        if tg("(con retraso por un corte de red) " + m["texto"], urgente=True):
+            hechos += 1
+    return hechos
+
+
+def tg_voz(texto, urgente=True, caption=True):  # arreglo 100
     """Nota de voz a SU chat con la voz de JARVIS (Edge TTS + diccionario de pronunciacion) y el texto debajo."""
     import tempfile
     try:
@@ -161,7 +185,7 @@ def tg_voz(texto, urgente=True):
         return tg(texto, urgente=urgente)
     if not urgente and en_silencio():
         return tg(texto)
-    return _tg_post("sendVoice", {"caption": texto[:1000]}, ("jarvis.ogg", datos, "audio/ogg"), campo="voice")
+    return _tg_post("sendVoice", {"caption": texto[:1000]} if caption else {}, ("jarvis.ogg", datos, "audio/ogg"), campo="voice")
 
 
 def tg_informe(titulo, texto, resumen):
@@ -191,8 +215,47 @@ def decir(texto):
         f.write(texto)
 
 
+def agente_pc_conectado():
+    """El agente del PC conectado al hub del portátil = PC encendido y listo para órdenes."""
+    try:
+        r = subprocess.run(["ss", "-tnH", "state", "established", "( sport = :18765 )"], capture_output=True, text=True, timeout=5)
+        return conf()["pc_ip"] in r.stdout
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def despierta_pc():
+    """Arreglo 89: encender el PC sin preguntar. Responde al momento y avisa UNA vez por Telegram cuando está listo."""
+    if agente_pc_conectado():
+        return "El PC ya está encendido, señor."
+    subprocess.Popen([VENV_PY, os.path.abspath(__file__), "__despertar__"], stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True)
+    return "Encendiendo el PC, señor. Le aviso en cuanto esté listo."
+
+
+def _despertar_y_avisar(espera=180):
+    import sys
+    sys.path.insert(0, SCRIPTS)
+    try:
+        import pc_do
+        pc_do.wol_send()
+    except Exception as e:  # noqa: BLE001
+        tg(f"No he podido mandar la señal para encender el PC, señor ({str(e)[:60]}).", urgente=True)
+        return
+    t0 = time.time()
+    while time.time() - t0 < espera:
+        time.sleep(5)
+        if agente_pc_conectado():
+            tg("✅ El PC ya está encendido, señor.", urgente=True)
+            log("mayordomo", f"PC encendido en {int(time.time() - t0)} s")
+            return
+    tg("El PC no ha respondido tras 3 minutos, señor. Puede que la BIOS o el cable de red no permitan encenderlo a distancia.", urgente=True)
+
+
 def pc_encendido():
     import socket
+    if agente_pc_conectado():
+        return True
     ip = conf()["pc_ip"]
     for port in (18765, 11434, 3389):
         try:
@@ -324,10 +387,28 @@ def _clave():
     return open(os.path.join(CFG, "anthropic.key"), encoding="utf-8").read().strip()
 
 
+# Tope de tokens de salida por tarea (quien). Se cambian en config.toml, sección [tokens], sin tocar código.
+TOPES_TOKENS = {"voz": 220, "voz_chispa": 80, "pronuncia": 40, "pantalla": 500, "mayordomo": 800,
+                "correo_lee": 600, "correo": 600, "seguridad": 2000, "mejora": 2500,
+                "investigador": 4000, "programador": 4000, "defecto": 1500}
+
+
+def tope_tokens(tarea, pedido=None):
+    """max_tokens efectivo de una tarea: lo pedido, sin pasar nunca del tope de esa tarea."""
+    topes = dict(TOPES_TOKENS)
+    try:
+        topes.update({k: int(v) for k, v in (conf().get("tokens") or {}).items()})
+    except (TypeError, ValueError, AttributeError):
+        pass
+    tope = topes.get(tarea, topes["defecto"])
+    return max(1, min(int(pedido), tope)) if pedido else tope
+
+
 def haiku(system, messages, max_tokens=400, quien="mayordomo", forzar=False):
     """Llamada a Claude Haiku 5.5: cache del texto de sistema si es largo, gasto apuntado y topes."""
     if not forzar and not puede(quien):
         raise SinPresupuesto(quien)
+    max_tokens = tope_tokens(quien, max_tokens)
     sis = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}] if len(system) >= 1800 else system
     if isinstance(messages, str):
         messages = [{"role": "user", "content": messages}]
@@ -591,6 +672,25 @@ AYUDA = ("Esto es lo que sé hacer, señor:\n"
          "• Juegos: «qué juegos tengo».\n"
          "• Rutinas: «modo juego», «modo trabajo», «modo noche».\n"
          "• Capturas: «mándame una captura».\n"
+         "• «Busca …» en internet y se lo resumo; «explícame lo que hay en pantalla»; «escribe …» en la ventana abierta.\n"
+         "• Música: «pon música de …», «pausa», «siguiente», «sube/baja el volumen»; «guarda eso» (clip de 30 s).\n"
+         "• Archivos: «mándame el PDF de …» y se lo paso por Telegram.\n"
+         "• Notas (Obsidian): «apunta que …», «qué apunté sobre …», «busca en mis notas …».\n"
+         "• Lista de la compra: «añade leche a la lista de la compra», «qué hay en la lista de la compra», «ya lo he comprado».\n"
+         "• «Léemelo» (lo seleccionado o copiado), «tradúceme esto» (y se lo dejo copiado), «qué suena».\n"
+         "• «Modo concentración 45 minutos»: silencio los avisos y le aviso al acabar. «Qué tengo hoy»: agenda, correo y recordatorios.\n"
+         "• «Qué tiempo hace» / «va a llover mañana», «cómo está el PC» (temperaturas, memoria, disco), «cuánto he jugado hoy/esta semana».\n"
+         "• «Graba la pantalla» / «para de grabar», «activa/quita la luz nocturna», «silencia el PC» / «quita el silencio». Cada noche le escribo el diario del día en Obsidian.\n"
+         "• «Qué me he perdido» (lo que ha pasado en las últimas horas), «recuérdame … cuando encienda el PC».\n"
+         "• «Mándame el último clip» / «mándame la última grabación» (por Telegram), «pon el volumen al 30».\n"
+         "• «Pasa esta ventana a la otra pantalla», «pantalla completa»; «quita/pon el saludo», «quita/pon el resumen de la tarde».\n"
+         "• Correo y agenda (solo leer): «tengo correos nuevos», «léeme el último correo», «qué tengo mañana / el viernes / esta semana».\n"
+         "• Voz: «para» o «cállate» (me callo), «repite», «más despacio» / «más rápido».\n"
+         "• Clics seguros: le señalo con el ratón y pregunto «¿pulso?»; diga «pulsa» o «no». «Ya no hace falta que confirmes» / «confirma antes de pulsar».\n"
+         "• «Qué me queda por hacer hoy», «repíteme el último aviso», «nota de voz: …», «pon un pomodoro», «cuánto llevo en el PC».\n"
+         "• «Abre mis proyectos» / «abre la carpeta de descargas», «minimiza / cierra esta ventana», «cámbiame a Spotify». Y el panel: «Panel de JARVIS» en sus apps.\n"
+         "• «Abre el panel» (lo abro en el PC), «resumen de mi semana».\n"
+         "• Lo que falta por implementar: «añade X a lo que falta por implementar», «qué falta por implementar», «marca hecho X».\n"
          "• Tareas largas: «esta noche busca … y mañana a las 7 me lo mandas», «cómo va la tarea», «cancela la tarea».\n"
          "• Webs: «resúmeme esto <enlace>», «avísame si baja el precio de … <enlace>», «qué estoy vigilando».\n"
          "• Correo y agenda: resumen de la mañana a las 9 («quita el resumen» / «pon el resumen»).\n"
@@ -628,7 +728,8 @@ def juegos_instalados():
 def rutinas():
     r = leer_json("rutinas.json", None)
     if r is None:
-        r = {"modo juego": [["cerrar", "chrome"], ["abrir", "steam"], ["abrir", "discord"], ["volumen", 60]],
+        r = {"modo juego": [["cerrar", "chrome"], ["abrir", "steam"], ["abrir", "discord"], ["volumen", 60], ["juego", True]],
+             "fin juego": [["juego", False]],
              "modo trabajo": [["abrir", "visual studio code"], ["abrir", "chrome"], ["cerrar", "steam"], ["volumen", 30]],
              "modo noche": [["cerrar", "steam"], ["cerrar", "discord"], ["volumen", 15]]}
         guardar_json("rutinas.json", r)
@@ -650,6 +751,10 @@ def haz_rutina(nombre):
             hechos.append(f"{acc} {arg}: {'sí' if r.returncode == 0 else 'no'}")
         elif acc in ("volumen", "silencio"):
             hechos.append(f"{acc}: {'sí' if _volumen(acc, arg) else 'no'}")
+        elif acc == "juego":  # PC: sin avisos + rendimiento al empezar; al terminar lo deja como estaba
+            r = subprocess.run([VENV_PY, os.path.join(SCRIPTS, "pc_do.py"), "game", "on" if arg else "off"],
+                               capture_output=True, text=True, timeout=40)
+            hechos.append(f"juego {'on' if arg else 'off'}: {'sí' if r.returncode == 0 else 'no'}")
     log("mayordomo", f"rutina {nombre}: {hechos}")
     return f"{nombre.capitalize()} listo, señor."
 
@@ -753,13 +858,24 @@ def local(texto, canal="voz"):
     if re.fullmatch(r"(llamame|hablemos|quiero hablar contigo|hablamos|charlemos)( jarvis)?", t):
         tg_voz("¿Sí, señor? Dígame. Mándeme una nota de voz y le contesto con mi voz.")
         return "Le he mandado una nota de voz a Telegram, señor."
+    import random as _rnd  # arreglo 102: charla instantanea, natural y variada
+    if re.fullmatch(r"(hola|buenas|hey|ey|holi|buenos dias|buenas tardes|buenas noches)( jarvis)?", t):
+        return _rnd.choice(["Buenas, señor. ¿En qué le ayudo?", "Hola, señor. Usted dirá.",
+                            "Aquí estoy, señor. ¿Qué necesita?", "Dígame, señor."])
+    if re.fullmatch(r"(gracias|muchas gracias|mil gracias|te lo agradezco|genial|perfecto|bien hecho)", t):
+        return _rnd.choice(["A usted, señor.", "Para eso estoy, señor.", "Cuando quiera, señor.", "Un placer, señor."])
+    if re.search(r"\bcomo estas\b|\bque tal estas\b|\bcomo te va\b|\bcomo andas\b|\bque tal\b", t):
+        return _rnd.choice(["Muy bien, señor, a su servicio.", "Perfectamente, señor. ¿Y usted?",
+                            "Todo en orden por aquí, señor.", "De maravilla, señor. ¿Qué necesita?"])
+    if re.search(r"\bquien eres\b|\bcomo te llamas\b", t):
+        return "Soy JARVIS, su asistente, señor."
     if re.search(r"\bque hora es\b|\bdime la hora\b", t):
         n = ahora(); return f"Son las {n.hour}:{n.minute:02d}, señor."
     if re.search(r"\bque dia es\b|\bque fecha\b|\bque dia estamos\b|\ba que estamos\b", t):
         n = ahora(); return f"Hoy es {DIAS[n.weekday()].replace('miercoles', 'miércoles').replace('sabado', 'sábado')} {n.day} de {MESES[n.month - 1]}, señor."
     if t in ("/ayuda", "/help", "ayuda") or re.search(r"\bque (sabes|puedes) hacer\b", t):
         return AYUDA
-    if re.search(r"\bcuanto (he|llevo|hemos) gastad[oa]\b|\bcuanto llevo gastado\b|\bgasto de hoy\b", t):
+    if re.search(r"\b(cuanto|que tanto|cual es mi|cuanta)\b.{0,18}\b(gast|consum|cuest|llev)|\bmi gasto\b|\bgasto de hoy\b|\bcuanto (he )?gast|\bcuanto (he )?consum", t):  # arreglo 98
         return resumen_gasto()
     if re.search(r"\bque juegos tengo\b|\bque juegos hay\b|\bmis juegos\b", t):
         js = juegos_instalados()
@@ -775,6 +891,13 @@ def local(texto, canal="voz"):
     m = re.search(r"\b(?:borra|quita|elimina|cancela)\s+(?:el\s+)?recordatorio\s*(.*)$", t)
     if m:
         return borra_recordatorio(m.group(1))
+    # encender / despertar el PC: directo, sin preguntar y sin IA (arreglo 89)
+    if re.search(r"\b(despiertalo|despierta(lo)?( el)? (pc|ordenador|equipo|fijo)|enciende(lo)?( el)? (pc|ordenador|equipo|fijo)|"
+                 r"prende(lo)?( el)? (pc|ordenador|equipo)|enciendelo|prendelo|arranca el (pc|ordenador))\b", t) \
+            or re.fullmatch(r"(enciende|despierta|prende)( el)? (pc|ordenador|equipo|fijo)", t):
+        return despierta_pc()
+    if re.search(r"\b(esta|sigue) (encendido|apagado|despierto|prendido) el (pc|ordenador|fijo)\b|\b(el )?(pc|ordenador) (esta|sigue) (encendido|apagado|despierto)\b", t):
+        return "Sí, señor: el PC está encendido." if pc_encendido() else despierta_pc()
     m = re.search(r"\b(?:recuerdame|recuerdamelo|avisame|ponme un recordatorio|ponme una alarma)\b(.*)$", t)
     encargo = re.search(r"\b(busca|buscame|investiga|averigua|encuentra|compara|informe|programador)\b", t)
     if m and not encargo and not re.search(r"https?://|\bsi baja\b|\bsi sale\b|\bsi cambia\b", texto.lower()):
@@ -782,7 +905,7 @@ def local(texto, canal="voz"):
         resto = re.sub(r"^\s*(que|de|para)\s+", "", resto).strip()
         if c:
             return nuevo_recordatorio(c, resto or "su recordatorio")
-        if resto:
+        if resto and re.search(r"\b(recuerdame|recuerdamelo|recordatorio|alarma)\b", t):  # «avísame» sin hora no es un recordatorio
             sug = (ahora() + dt.timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
             return propone(f"¿Se lo recuerdo {di_cuando(sug)}?", {"tipo": "recordatorio", "ts": int(sug.timestamp()), "texto": resto})
     if re.search(r"\bquita (el )?resumen\b|\bsin resumen\b|\bdesactiva (el )?resumen\b", t):
@@ -822,6 +945,20 @@ def local(texto, canal="voz"):
         return "Reviso la seguridad de todo JARVIS, señor; le mando el informe a Telegram en unos minutos."
     if modulo("mejora") and re.search(r"\bpropon(me)?\s+mejoras\b|\bque mejoras propones\b", t):
         return demanda("mejoras")
+    m = re.search(r"\bvoy a jugar\b(?:\s+(?:a|al)\s+(.+))?", t)
+    if m:
+        hecho = haz_rutina("modo juego")
+        juego = (m.group(1) or "").strip(" .¡!¿?")
+        if juego and hecho and hecho.endswith("listo, señor."):
+            for tienda in ("steam", "epic"):
+                r = subprocess.run([VENV_PY, os.path.join(SCRIPTS, "juegos.py"), tienda, "abrir", juego],
+                                   capture_output=True, text=True, timeout=60)
+                if r.returncode == 0:
+                    return "Modo juego listo, señor. " + (r.stdout.strip().splitlines() or [""])[-1]
+            return f"Modo juego listo, señor, pero no encuentro {juego} entre sus juegos."
+        return hecho
+    if re.search(r"\b(he terminado|ya he terminado|termine|acabe|he acabado) de jugar\b|\bya no juego\b|\bquita el modo juego\b", t):
+        return haz_rutina("fin juego") or "Hecho, señor."
     for nombre in rutinas():
         if re.search(r"\b(pon(me)?|activa|entra en)?\s*(el\s+)?" + re.escape(nombre) + r"\b", t):
             return haz_rutina(nombre)
@@ -871,10 +1008,34 @@ def compleja(texto, canal="telegram"):
     return None
 
 
+def _antes(texto, canal):
+    import jx_skills  # «recuérdame X cuando encienda el PC» (antes que los recordatorios con hora)
+    return jx_skills.antes(texto, canal)
+
+
+def _habilidades(texto, canal):
+    import jx_skills  # busca y dime, pantalla, música, dictado, clip, archivos
+    return jx_skills.responde(texto, canal)
+
+
+def _apunta_actividad(texto, canal, r):
+    """Para el panel: las últimas órdenes atendidas (qué pidió y qué hice), solo en este portátil."""
+    try:
+        act = leer_json("actividad.json", [])
+        act.append({"cuando": ahora().strftime("%d/%m %H:%M"), "canal": canal, "pidio": str(texto)[:80],
+                    "hizo": re.sub(r"\s+", " ", str(r))[:120]})
+        guardar_json("actividad.json", act[-50:])
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def responde(texto, canal="telegram"):
     """Punto de entrada para voz y Telegram: primero lo local, luego lo compuesto. None = flujo normal."""
     try:
-        return local(texto, canal) or compleja(texto, canal)
+        r = _antes(texto, canal) or local(texto, canal) or compleja(texto, canal) or _habilidades(texto, canal)
+        if r:
+            _apunta_actividad(texto, canal, r)
+        return r
     except Exception as e:  # noqa: BLE001
         log("mayordomo", f"responde fallo: {str(e)[:120]}")
         return None
@@ -882,4 +1043,7 @@ def responde(texto, canal="telegram"):
 
 if __name__ == "__main__":
     import sys
+    if sys.argv[1:] == ["__despertar__"]:
+        _despertar_y_avisar()
+        sys.exit(0)
     print(responde(" ".join(sys.argv[1:]), "prueba") or "(sin respuesta local)")

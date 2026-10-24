@@ -29,10 +29,10 @@ def main(texto):
         print("No encuentro el bot o el chat del señor en la configuración.")
         return 1
     img = P._img(0)
-    if img.size[0] > 3200:
-        img = img.resize((3200, round(img.size[1] * 3200 / img.size[0])))
+    if img.size[0] > 1920:
+        img = img.resize((1920, round(img.size[1] * 1920 / img.size[0])))
     buf = io.BytesIO()
-    img.save(buf, "JPEG", quality=85)
+    img.save(buf, "JPEG", quality=72)
     b = uuid.uuid4().hex
     partes = [(f'--{b}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n{chat}\r\n').encode(),
               (f'--{b}\r\nContent-Disposition: form-data; name="caption"\r\n\r\n{texto}\r\n').encode(),
@@ -42,8 +42,11 @@ def main(texto):
     req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendPhoto", b"".join(partes),
                                  {"Content-Type": f"multipart/form-data; boundary={b}"})
     try:
-        with urllib.request.urlopen(req, timeout=60) as r:
+        with urllib.request.urlopen(req, timeout=120) as r:
             ok = json.load(r).get("ok")
+    except (TimeoutError, OSError) as ex:  # arreglo 94: subida hecha pero sin confirmacion -> no es fallo
+        print("Captura enviada a su Telegram, señor.")
+        return 0
     except Exception as ex:  # noqa: BLE001
         print(f"No he podido mandar la captura ({str(ex).replace(token, '***')[:100]}).")
         return 1

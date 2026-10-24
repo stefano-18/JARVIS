@@ -97,12 +97,20 @@ def captura(zona=None):
     return base64.b64encode(out.getvalue()).decode(), esc, img.size
 
 
+def _tope(pedido):
+    try:
+        import jx
+        return jx.tope_tokens("pantalla", pedido)
+    except Exception:  # noqa: BLE001
+        return pedido
+
+
 def haiku(objetivo, b64, tam, hechos):
     key = open(os.path.join(HOME, ".config/jarvis/anthropic.key"), encoding="utf-8").read().strip()
     txt = f"Objetivo: {objetivo}\nTamaño de la imagen: {tam[0]}x{tam[1]}\n"
     txt += ("Ya hiciste: " + " | ".join(hechos[-6:])) if hechos else "Es el primer paso."
     txt += "\nResponde SOLO con el JSON de una acción, empezando por { y sin texto antes ni después."
-    body = json.dumps({"model": "claude-haiku-5-5", "max_tokens": 400, "thinking": {"type": "disabled"}, "system": _SIS_CACHE, "messages": [
+    body = json.dumps({"model": "claude-haiku-5-5", "max_tokens": _tope(400), "thinking": {"type": "disabled"}, "system": _SIS_CACHE, "messages": [
         {"role": "user", "content": [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
                                      {"type": "text", "text": txt}]}]}).encode()
     req = urllib.request.Request("https://api.anthropic.com/v1/messages", body,
@@ -173,6 +181,7 @@ def _layout():
             mons.append({"n": n, "x": x, "y": y, "w": w, "h": h})
         if len(mons) == 2 and (mons[0]["x"], mons[0]["y"]) != (mons[1]["x"], mons[1]["y"]):
             d = {"origen": [-mons[0]["x"], -mons[0]["y"]], "mons": mons}
+        d["total"] = [W, H]  # arreglo 91: para notar si vuelve o se va una pantalla
     except Exception as e:  # noqa: BLE001
         _log(f"pantallas: {str(e)[:120]}")
         return d
@@ -199,10 +208,29 @@ def capturas(zona=None):
     lay = None if zona else _layout()
     if lay and lay.get("mons"):
         todo = _img(0)
+        W = max(m["x"] + m["w"] for m in lay["mons"]); H = max(m["y"] + m["h"] for m in lay["mons"])
+        if todo.size != (W, H):  # arreglo 91: las pantallas han cambiado -> colocación nueva
+            _log(f"pantallas cambiadas ({todo.size} != {(W, H)}): vuelvo a averiguar la colocación")
+            try:
+                os.remove(LAYOUT_F)
+            except OSError:
+                pass
+            lay = _layout()
+            if not lay.get("mons"):
+                return [_vista(todo, (0, 0))]
+            todo = _img(0)
         ox, oy = lay["origen"]
         return [_vista(todo.crop((m["x"], m["y"], m["x"] + m["w"], m["y"] + m["h"])), (m["x"] + ox, m["y"] + oy))
                 for m in lay["mons"]]
     img = _img(None)
+    if lay is not None and lay.get("total") and list(img.size) != lay["total"]:  # arreglo 91: ha vuelto otra pantalla
+        _log(f"pantallas cambiadas ({img.size} != {lay['total']}): vuelvo a averiguar la colocación")
+        try:
+            os.remove(LAYOUT_F)
+        except OSError:
+            pass
+        if _layout().get("mons"):
+            return capturas(zona)
     if zona:
         img = img.crop((zona[0], zona[1], min(zona[2], img.size[0]), min(zona[3], img.size[1])))
         return [_vista(img, (zona[0], zona[1]))]
@@ -225,7 +253,7 @@ def haiku_v(objetivo, vistas, hechos):
     txt += ("Ya hiciste: " + " | ".join(hechos[-6:])) if hechos else "Es el primer paso."
     txt += "\nResponde SOLO con el JSON, empezando por { y sin texto antes ni después."
     cont.append({"type": "text", "text": txt})
-    body = json.dumps({"model": "claude-haiku-5-5", "max_tokens": 500, "thinking": {"type": "disabled"}, "system": _SIS_CACHE,
+    body = json.dumps({"model": "claude-haiku-5-5", "max_tokens": _tope(500), "thinking": {"type": "disabled"}, "system": _SIS_CACHE,
                        "messages": [{"role": "user", "content": cont}]}).encode()
     req = urllib.request.Request("https://api.anthropic.com/v1/messages", body,
                                  {"content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01"})
@@ -270,6 +298,14 @@ def _espera_ventana(patron, segundos):
     return False
 
 
+def _confirmar_clics():
+    """ajustes.json «confirmar_clics»: True = señalar y preguntar antes de cada clic."""
+    try:
+        return bool(json.load(open(os.path.join(HOME, ".config/jarvis/ajustes.json"), encoding="utf-8")).get("confirmar_clics"))
+    except (OSError, ValueError):
+        return False
+
+
 def _haz(a, vistas, hechos):
     acc = a.get("accion")
     if acc == "clic":
@@ -279,6 +315,19 @@ def _haz(a, vistas, hechos):
             return "BLOQUEO"
         v = vistas[min(max(int(a.get("pantalla") or 1), 1), len(vistas)) - 1]
         x, y = v["off"][0] + round(int(a["x"]) * v["esc"]), v["off"][1] + round(int(a["y"]) * v["esc"])
+        if _confirmar_clics():   # modo seguro: señalo sin pulsar y pregunto (lo pulsa «pulsa» en jx_skills)
+            pc("ui.point", {"x": x, "y": y})
+            que = str(a.get("que", "") or "ahí")[:60]
+            json.dump({"x": x, "y": y, "que": que, "doble": bool(a.get("doble")), "ts": time.time()},
+                      open(os.path.join(HOME, ".config/jarvis/clic_pendiente.json"), "w", encoding="utf-8"))
+            msg = f"Tengo el ratón sobre «{que}», señor. ¿Pulso? Diga «pulsa» o «no»."
+            try:
+                import jx
+                jx.decir(msg)
+                jx.tg(msg, urgente=True)
+            except Exception:  # noqa: BLE001
+                pass
+            return msg
         pc("ui.click", {"x": x, "y": y})
         globals()["_CLICO"] = True  # hubo que pulsar algo (p. ej. elegir cuenta)
         if a.get("doble"):

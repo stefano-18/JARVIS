@@ -281,6 +281,8 @@ def ollama(t):
 
 DIRECTO_SYS = ("Eres JARVIS, el mayordomo de {{NOMBRE}}. Hablas en español y le llamas señor. Tu respuesta se leerá en voz alta: "
                "una o dos frases cortas, naturales, sin listas, comandos, rutas ni código. "
+               "Habla en español de España, cercano y natural como una persona de verdad; usa expresiones "
+               "normales del día a día y nunca suenes a traducción literal del inglés ni a robot (arreglo 101). "
                "Si lo que pide requiere HACER algo (abrir o cerrar apps, archivos, volumen, apagar o encender, correo, calendario, "
                "buscar en internet, recordatorios, mensajes, cualquier acción en el PC o el portátil) o datos actuales que no sabes "
                "(tiempo, noticias, precios), responde solo la palabra ACCION. Nunca pidas confirmación para abrir o cerrar apps.")
@@ -329,7 +331,16 @@ _JUEGOS_F = os.path.join(HOME, ".config/jarvis/juegos_ok.txt")
 _BASE_SYS = DIRECTO_SYS + (
     " Si el señor pide hacer algo en la pantalla del PC con el ratón o el teclado (pulsar un botón, entrar en un menú, "
     "escribir algo, bajar la página, elegir una opción, etc.) y no es solo abrir o cerrar una app o un juego, responde "
-    "solo: PANTALLA: seguido del objetivo claro en una frase.")
+    "solo: PANTALLA: seguido del objetivo claro en una frase."
+    " Esta regla vale para CUALQUIER accion que no tenga ya una orden propia (arreglo 96): "
+    "en vez de decir que no puedes o que algo no esta en tu lista, responde PANTALLA: y se hara "
+    "con el raton y el teclado. Solo di que no has podido TRAS intentarlo, y entonces di que "
+    "intentaste y que lo impidio (inicio de sesion, CAPTCHA, la app no responde, o que hace falta "
+    "la palabra clave). Nunca des por hecho un resultado que no hayas comprobado."
+    " Si el senor pide abrir una pagina o un sitio web, entrar a YouTube, o buscar algo en YouTube "
+    "(arreglo 97), responde solo: WEB: seguido de la URL completa (https://...). YouTube: "
+    "https://www.youtube.com ; buscar en YouTube: https://www.youtube.com/results?search_query=TERMINOS "
+    "(los terminos separados por +). Se abre en el navegador que haya (Brave si no hay Chrome).")
 
 
 def _juegos_ok():
@@ -393,11 +404,21 @@ def _refresca_sys():
         "Epic Games (por ejemplo Fortnite).")
 
 
+def _obsidian(t):
+    """Solo las notas de Obsidian que vienen al caso, cortas (voz): nada si no hay ninguna."""
+    try:
+        import jx_obsidian
+        c = jx_obsidian.contexto(t, max_chars=700, top_k=2)
+        return (c + "\n\n") if c else ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def directo(t):
     _refresca_sys()
     key = open(os.path.join(HOME, ".config/jarvis/anthropic.key"), encoding="utf-8").read().strip()
-    body = json.dumps({"model": "claude-haiku-5-5", "max_tokens": 220, "thinking": {"type": "disabled"}, "system": [{"type": "text", "text": DIRECTO_SYS, "cache_control": {"type": "ephemeral"}}],
-                       "messages": _hist_reciente() + [{"role": "user", "content": _contexto_momento() + t}]}).encode()
+    body = json.dumps({"model": "claude-haiku-5-5", "max_tokens": jx.tope_tokens("voz", 220), "thinking": {"type": "disabled"}, "system": [{"type": "text", "text": DIRECTO_SYS, "cache_control": {"type": "ephemeral"}}],
+                       "messages": _hist_reciente() + [{"role": "user", "content": _contexto_momento() + _obsidian(t) + t}]}).encode()
     req = urllib.request.Request("https://api.anthropic.com/v1/messages", body,
                                  {"content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01"})
     with urllib.request.urlopen(req, timeout=30) as r:
@@ -423,6 +444,12 @@ def directo(t):
             subprocess.Popen([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "pantalla.py"), obj,
                               "--pasos", "12"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=ENV, start_new_session=True)
             return "Enseguida, señor."
+    if re.match(r"WEB\b", out, re.I):  # arreglo 97
+        url = re.sub(r"^WEB\W*", "", out, flags=re.I).strip()
+        if url.startswith(("http://", "https://")):
+            subprocess.Popen([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "pc_do.py"), "web", url],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=ENV, start_new_session=True)
+            return "Abriendo la pagina en el navegador, senor."
     if out.upper().startswith("RUIDO"):
         return "__RUIDO__"
     if not out or out.upper().replace("Ó", "O").startswith("ACCION"):
@@ -522,7 +549,7 @@ def _chispa(base, juego):
         return base
     try:
         key = open(os.path.join(HOME, ".config/jarvis/anthropic.key"), encoding="utf-8").read().strip()
-        body = json.dumps({"model": "claude-haiku-5-5", "max_tokens": 80, "thinking": {"type": "disabled"},
+        body = json.dumps({"model": "claude-haiku-5-5", "max_tokens": jx.tope_tokens("voz_chispa", 80), "thinking": {"type": "disabled"},
                            "system": "Eres JARVIS, mayordomo británico con humor fino. Da UNA frase muy corta (máx. 12 palabras), "
                                      "ingeniosa y con relación al juego o programa, para añadir tras confirmar que lo abres. Sin comillas.",
                            "messages": [{"role": "user", "content": juego}]}).encode()
@@ -557,6 +584,13 @@ def _steam_o_epic(q):
     return ("steam", n) if n else ("epic", q)
 
 
+def _juegos_otros():
+    try:
+        return [x.strip() for x in open(os.path.join(HOME, ".config/jarvis/juegos_otros.txt"), encoding="utf-8-sig") if x.strip()]
+    except OSError:
+        return []
+
+
 def juego_buscado(t):
     t = re.split(r"\b[jhy][aáeé]?rv[ií]s\b[\s,.!¡]*", t.strip().rstrip(".!?¡¿ "), flags=re.I)[-1].strip() or t
     t, cta = _quita_cuenta(t)
@@ -564,6 +598,12 @@ def juego_buscado(t):
     if not m or re.fullmatch(r"steam|epic(?:\s+games)?", m.group(1).strip(), re.I):
         return None
     q = m.group(1).strip()
+    otro = _parecido_fon(q, _juegos_otros(), 0.8)  # arreglo 90: juego de otra tienda -> su acceso directo del PC
+    if otro:
+        r = _app_directa_lenta(f"abre {otro.lower()}")
+        if r and not re.search(r"no (?:he )?pod|fuera de|allowlist", r, re.I):
+            return r
+        return f"{otro} es de otra tienda y no lo tengo en la lista de accesos directos del PC, señor. Ábralo desde su lanzador."
     n = _es_juego(q) or _en_steam(q)
     return _lanza_juego("steam", "abrir", n, cta or "{{CUENTA_STEAM_1_MIN}}") if n else None
 
@@ -662,7 +702,7 @@ def _pron_regla(n):
 def _pron_aprende(n):
     try:
         key = open(os.path.join(HOME, ".config/jarvis/anthropic.key"), encoding="utf-8").read().strip()
-        body = json.dumps({"model": "claude-haiku-5-5", "max_tokens": 40, "thinking": {"type": "disabled"},
+        body = json.dumps({"model": "claude-haiku-5-5", "max_tokens": jx.tope_tokens("pronuncia", 40), "thinking": {"type": "disabled"},
                            "system": "Devuelves SOLO cómo se escribiría un nombre en español para que una voz española lo lea "
                                      "como se pronuncia de verdad (normalmente en inglés). Ejemplos: Phasmophobia -> Fasmofobia, "
                                      "Spotify -> Espotifai, Fortnite -> Fórtnait, Steam -> Estim. Si ya se lee bien en español, "

@@ -39,3 +39,10 @@ firma.key
 *.lock
 pc-windows/voz/cache/
 voice_outbox.txt
+killswitch.json
+.usage.json
+*.usage.json
+
+# agente del PC: audit.py es codigo (el patron audit* de arriba lo dejaba fuera)
+!pc-windows/remote_agent/audit.py
+pc-windows/voz/acks/

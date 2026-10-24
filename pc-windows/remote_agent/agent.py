@@ -38,6 +38,14 @@ except ImportError:  # autocontenido en el PC
     except ImportError:
         _pr = None
 
+if sys.platform.startswith("linux"):   # PC con Omarchy
+    try:
+        from remote_agent import actions_linux as _lx
+    except ImportError:
+        import actions_linux as _lx
+else:
+    _lx = None
+
 try:
     from websockets.asyncio.client import connect
 except ImportError:
@@ -167,9 +175,12 @@ def build_ctx(cfg: dict) -> dict:
             return int(str(cfg.get(key, default)))
         except (TypeError, ValueError):
             return default
+    apps = C.apps(cfg)
+    if _lx is not None:   # Linux: allowlist = apps y juegos instalados en este PC (+ las del .env)
+        apps = {**_lx.installed_apps(), **apps}
     return {
         "roots": C.roots(cfg),
-        "apps": C.apps(cfg),
+        "apps": apps,
         "commands": C.commands(cfg),
         "shell_timeout": float(cfg.get("SHELL_TIMEOUT", 10)),
         "output_max": int(cfg.get("OUTPUT_MAX", 65536)),
@@ -271,6 +282,10 @@ async def execute_action(manifest: dict, params: dict, grant: dict,
     queda registrada igual que la via jr_req. Sin log no hay auditoria.
     """
     action = dict(manifest)
+    if _lx is not None and action.get("module") == "files":
+        # rutas de Windows del cerebro -> su equivalente en Linux; la politica
+        # de roots se evalua despues sobre la ruta ya traducida
+        params = _lx.translate_paths(params)
     # shell fuera de allowlist sube a HIGH (evaluado aqui Y en el Core)
     if action["name"] == "shell.exec":
         cmd = str(params.get("cmd", "")).lower()

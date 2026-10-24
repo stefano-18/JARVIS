@@ -52,6 +52,9 @@ def main():
         "cuenta_steam_2": pregunta("Cuenta secundaria de Steam (opcional)", "cuenta2"),
         "zona": pregunta("Zona horaria", "Europe/Madrid"),
     }
+    pc_si = pregunta("¿El PC con Windows se conectará a este equipo por la red? (s/n)", "s").lower().startswith("s")
+    # sin PC: los servicios solo escuchan en este equipo. Con PC: en la red de casa (limítelo con el cortafuegos, ver docs/PENDIENTE.md)
+    c["escucha_ip"] = "0.0.0.0" if pc_si else "127.0.0.1"
     toml = "# JARVIS: configuración de este equipo (sin claves). Generado por setup.py\n" + "".join(
         f'{k} = "{v}"\n' for k, v in c.items()) + "silencio_desde = 23\nsilencio_hasta = 8\ntope_global_usd = 0.50\naviso_gasto_usd = 0.30\nsolo_claude = true\n"
     escribe(os.path.join(CFG, "config.toml"), toml)

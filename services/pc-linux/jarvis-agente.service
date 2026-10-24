@@ -1,0 +1,15 @@
+[Unit]
+Description=JARVIS: agente del PC (control de apps, ventanas, teclado y volumen para el cerebro)
+After=graphical-session.target network-online.target
+
+[Service]
+WorkingDirectory=%h/jarvis-repo/pc-windows/remote_agent
+EnvironmentFile=%h/.config/jarvis-pc/agent.env
+# systemd ya garantiza una sola copia: el candado de un arranque anterior sobra (tras reiniciar, su PID puede ser otro proceso)
+ExecStartPre=/usr/bin/rm -f %h/jarvis-repo/pc-windows/remote_agent/agent.lock
+ExecStart=%h/.local/share/jarvis/venv-voz/bin/python agent.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

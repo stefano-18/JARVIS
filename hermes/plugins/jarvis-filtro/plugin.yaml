@@ -4,3 +4,4 @@ description: "JARVIS: palabra clave, ordenes rapidas sin IA, visto bueno de envi
 provides_hooks:
   - post_gateway_admission
   - pre_tool_call
+  - pre_llm_call

@@ -253,7 +253,7 @@ function sanitizeOutbound(text) {
 // --- Ordenes rapidas sin IA (arreglo 7) ---
 const JX_PY = "{{HOME}}/jarvis2/scripts";
 const JX_GATE = ["{{HOME}}/jarvis-control/jarvis_gate.py", "{{HOME}}/jarvis2/scripts/jarvis_gate.py"].find((p) => _jxFs.existsSync(p));
-const JX_ASLEEP = "El PC está apagado, señor. Dígame «enciende el PC» y lo despierto.";
+const JX_ASLEEP = "No llego al PC, señor: está apagado o su agente no está conectado. No he ejecutado nada. Dígame «enciende el PC» y lo despierto.";
 const JX_EXCLUDE = /(ojo de dios|gods?.?eye|maigret|harvester|herramienta|yt.?dlp|gallery|juego|jarvis|conversacion|sesion|modo seguro|archivo|carpeta|http|www\.|pagina|web|enlace|\?)/;
 const JX_PC = "(?:\\s+(?:en|del)\\s+(?:el\\s+)?(?:pc|ordenador|computador|computadora))?";
 const JX_BAD = /traceback|"ok"\s*:\s*false/i;
@@ -272,11 +272,12 @@ function parseRapido(raw) {
     const n = Math.min(100, parseInt(m[1], 10));
     return { op: "pc", args: ["volume", String(n)], ok: `Volumen al ${n} %, señor.`, fail: "No he podido cambiar el volumen, señor." };
   }
+  if (/^(?:bloquea|bloqueame)\s+(?:el\s+|mi\s+)?(?:pc|ordenador|computador|computadora|pantalla)$/.test(t)) return { op: "pc", args: ["lock"], ok: "PC bloqueado, señor.", fail: "No he podido bloquear el PC, señor." };
   if (/^(?:silencia(?:\s+el\s+(?:pc|ordenador))?|silencio|mute|quita el sonido)$/.test(t)) return { op: "pc", args: ["volume", "mute"], ok: "PC silenciado, señor.", fail: "No he podido silenciar el PC, señor." };
   if (/^(?:quita el silencio|unmute|activa el sonido|pon el sonido)$/.test(t)) return { op: "pc", args: ["volume", "unmute"], ok: "Sonido activado, señor.", fail: "No he podido activar el sonido, señor." };
   if (/^(?:abre|abreme|ejecuta|inicia|lanza)\s+(?:el\s+)?(?:ojo de dios|gods?.?eye(?:.?view)?)(?:\s+(?:en|del)\s+(?:el\s+)?(?:pc|ordenador))?$/.test(t)) return { op: "pc", args: ["open", "{{WIN_HOME_ESC}}\\herramientas\\gods-eye-view\\abrir-gods-eye.bat"], ok: "Abriendo el Ojo de Dios en el PC, señor.", fail: "No he podido abrir el Ojo de Dios, señor." };
   if ((m = t.match(new RegExp("^(abre|abreme|ejecuta|inicia|cierra|cierrame)\\s+(?:el\\s+|la\\s+|los\\s+|las\\s+)?(.+?)" + JX_PC + "$")))) {
-    const name = m[2].trim();
+    const name = m[2].trim().replace(/^(?:el\s+|la\s+)?(?:juego|aplicacion|app|programa)\s+(?:de\s+)?/, "");
     if (!name || JX_EXCLUDE.test(name) || name.split(/\s+/).length > 4) return null;
     const open = !m[1].startsWith("cierra");
     return { op: "pc", args: [open ? "open" : "close", name],
@@ -294,7 +295,17 @@ function _jxRun(file, args, timeoutMs) {
   });
 }
 
-function _jxAwake(timeoutMs = 1500) {
+function _jxAgente() {
+  // el agente del PC (Linux) se conecta al hub del portátil (puerto 18765): eso es «encendido y listo»
+  return new Promise((res) => {
+    _jxExecFile("ss", ["-tnH", "state", "established", "( sport = :18765 )"], { timeout: 5000 }, (err, stdout) => {
+      res(!err && String(stdout || "").includes("{{PC_IP}}:"));
+    });
+  });
+}
+
+async function _jxAwake(timeoutMs = 1500) {
+  if (await _jxAgente()) return true;
   const tryPort = (port) => new Promise((res) => {
     const s = _jxNet.createConnection({ host: "{{PC_IP}}", port });
     const done = (v) => { s.destroy(); res(v); };
@@ -302,8 +313,10 @@ function _jxAwake(timeoutMs = 1500) {
     s.once("connect", () => done(true));
     s.once("error", () => done(false));
   });
-  return Promise.all([tryPort(8765), tryPort(11434)]).then((r) => r.some(Boolean));
+  // 22 = SSH del PC Linux; 8765/11434 quedan por el PC Windows
+  return Promise.all([tryPort(22), tryPort(8765), tryPort(11434)]).then((r) => r.some(Boolean));
 }
+const JX_SIN_AGENTE = "No llego al PC, señor: su agente no está conectado al cerebro. Puede estar apagado o fuera de la red de casa; no he ejecutado nada.";
 
 async function handleRapido(raw) {
   const r = parseRapido(raw);
@@ -318,7 +331,7 @@ async function handleRapido(raw) {
     return "Encendiendo el PC, señor. En un minuto lo tiene listo.";
   }
   if (r.op === "power") {
-    if (!awake) return r.act === "shutdown" ? "El PC ya está apagado, señor." : JX_ASLEEP;
+    if (!awake) return r.act === "shutdown" ? JX_SIN_AGENTE : JX_ASLEEP;
     if (!JX_GATE) return undefined;
     const g = await _jxRun(JX_GATE, ["check-high"], 10000);
     if (!/^\s*OK\b/m.test(g.out)) return "Esto necesita su palabra clave, señor.";

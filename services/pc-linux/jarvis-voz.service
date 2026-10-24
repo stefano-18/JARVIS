@@ -1,0 +1,14 @@
+[Unit]
+Description=JARVIS: voz del PC (Hey Jarvis, microfono y altavoces)
+After=pipewire.service wireplumber.service network-online.target
+Wants=pipewire.service
+
+[Service]
+WorkingDirectory=%h/jarvis-repo/pc-windows/voz
+Environment=JARVIS_WS_URL=ws://{{PORTATIL_IP}}:8765
+ExecStart=%h/.local/share/jarvis/venv-voz/bin/python jarvis_voz.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

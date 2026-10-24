@@ -19,7 +19,17 @@ try:
 except ImportError:  # pragma: no cover
     from websockets import serve  # type: ignore
 
-HOST = "0.0.0.0"
+def _escucha_ip():
+    # arreglo 88: sale de ~/.config/jarvis/config.toml (escucha_ip); por defecto solo este equipo
+    try:
+        import os, tomllib
+        with open(os.path.expanduser("~/.config/jarvis/config.toml"), "rb") as f:
+            return tomllib.load(f).get("escucha_ip", "127.0.0.1")
+    except Exception:  # noqa: BLE001
+        return "127.0.0.1"
+
+
+HOST = _escucha_ip()
 PORT = 8765
 
 logging.basicConfig(level=logging.INFO,

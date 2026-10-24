@@ -1,0 +1,12 @@
+[Unit]
+Description=JARVIS: panel de estado (solo red de casa, con clave)
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/jarvis2/scripts
+ExecStart=%h/jarvis2/.venv/bin/python jx_panel.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

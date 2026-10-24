@@ -149,6 +149,30 @@ if actions_media is not None:
          "scope": "media", "fn": actions_media.volume_mute},
     ]
 
+import sys as _sys
+if _sys.platform.startswith("linux"):
+    # PC con Omarchy: mismas acciones, implementacion Linux (ver actions_linux.py)
+    try:
+        from remote_agent import actions_linux as _lx
+    except ImportError:
+        import actions_linux as _lx
+    for _m in MANIFESTS:
+        if _m["name"] in _lx.OVERRIDES:
+            _m["fn"] = _lx.OVERRIDES[_m["name"]]
+        elif _m["module"] == "files":
+            _m["fn"] = _lx.wrap_paths(_m["fn"])
+        elif _m["name"] == "shell.exec":
+            _m["fn"] = _lx.wrap_shell(_m["fn"])
+    _have = {_m["name"] for _m in MANIFESTS}
+    MANIFESTS += [_m for _m in _lx.EXTRA if _m["name"] not in _have]
+    if not any(_m["name"].startswith("volume.") for _m in MANIFESTS):
+        MANIFESTS += [
+            {"name": n, "params": p, "risk": "medium", "timeout": 10, "module": "media",
+             "scope": "media", "fn": _lx.OVERRIDES[n]}
+            for n, p in (("media.play_pause", {}), ("media.next", {}), ("media.previous", {}),
+                         ("volume.get", {}), ("volume.set", {"level": "int"}),
+                         ("volume.mute", {"muted": "bool?"}))]
+
 BY_NAME = {m["name"]: m for m in MANIFESTS}
 
 

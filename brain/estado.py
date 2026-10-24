@@ -5,6 +5,7 @@ Imprime lineas cortas. Nunca imprime secretos (solo el modelo en uso).
 """
 import ctypes
 import json
+import os
 import shutil
 import socket
 import subprocess
@@ -59,7 +60,7 @@ def tcp_ok(ip, port, timeout=3) -> bool:
 
 def ping_ok(ip) -> bool:
     try:
-        r = subprocess.run(["ping", "-n", "1", "-w", "1000", ip],
+        r = subprocess.run((["ping", "-n", "1", "-w", "1000", ip] if os.name == "nt" else ["ping", "-c", "1", "-W", "1", ip]),
                            capture_output=True, text=True, timeout=10)
         return r.returncode == 0
     except Exception:
@@ -89,7 +90,7 @@ def main() -> int:
     out.append(f"servicios: gateway18789={'OK' if gw else 'CAIDO'}, "
                f"ollama={'OK' if oll else 'CAIDO'}, "
                f"jarvis-hub={'OK' if hub else 'CAIDO'}")
-    pc_up = ping_ok(PC_IP) or tcp_ok(PC_IP, 11434) or tcp_ok(PC_IP, 8765)
+    pc_up = ping_ok(PC_IP) or tcp_ok(PC_IP, 22) or tcp_ok(PC_IP, 11434) or tcp_ok(PC_IP, 8765)
     if pc_up:
         tags = http_json(f"http://{PC_IP}:11434/api/tags")
         models = ",".join(t.get("name", "?") for t in (tags or {}).get(

@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Gancho pre-commit de JARVIS: bloquea el commit si lo que se va a guardar tiene claves o datos personales.
+# Lo instala install.sh (o: cp tools/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit)
+R="$(git rev-parse --show-toplevel)"
+mapfile -t F < <(git diff --cached --name-only --diff-filter=ACM)
+[ ${#F[@]} -eq 0 ] && exit 0
+if ! bash "$R/tools/escanear_claves.sh" "${F[@]}"; then
+  echo "BLOQUEADO: hay algo que parece una clave (arriba: archivo:línea y tipo). No se ha guardado nada."
+  exit 1
+fi
+PY=$(command -v python3 || command -v python)
+if [ -n "$PY" ] && ! "$PY" "$R/tools/anonimizar.py" --solo-comprobar "${F[@]}"; then
+  echo "BLOQUEADO: hay datos personales sin anonimizar (arriba). No se ha guardado nada."
+  exit 1
+fi
+exit 0

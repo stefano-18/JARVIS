@@ -2,6 +2,8 @@
 
 Estas cosas no se pudieron hacer automáticamente porque necesitan contraseña de administrador o tocan el candado.
 
+**Atajo:** en el portátil `bash ~/jarvis-repo/tools/con-contrasena-portatil.sh` (puntos 1, 4 y 5) y en el PC clic derecho en `pc-windows/con-contrasena-pc.ps1` → Ejecutar con PowerShell (punto 2). Piden la contraseña una sola vez. Ojo: el del portátil deja el cortafuegos en «denegar entradas» salvo lo de JARVIS y SSH desde casa.
+
 ## 1. Cortafuegos del portátil (necesita `sudo`)
 Ahora mismo el servidor de voz (puerto 8765) acepta conexiones de cualquier aparato de la red de casa. Solo debería
 aceptar al PC:

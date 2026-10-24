@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JARVIS · Panel</title>
+<style>
+  :root { --fondo:#070b14; --tarjeta:#0e1626; --borde:#1c2a44; --texto:#dbe6ff; --suave:#8ea3c7;
+          --azul:#00b4ff; --oro:#ffc400; --ok:#2fd27a; --mal:#ff4d5e; --gris:#5b6b87; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:radial-gradient(1200px 600px at 20% -10%, #0b2a4a 0%, var(--fondo) 55%); color:var(--texto);
+         font:15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; min-height:100vh; }
+  header { display:flex; align-items:center; gap:14px; padding:18px 20px 8px; }
+  .reactor { width:38px; height:38px; border-radius:50%; flex:none;
+             background:radial-gradient(circle, #e9fbff 0 18%, var(--azul) 30%, #0a3a66 62%, transparent 64%);
+             box-shadow:0 0 18px var(--azul); animation:latido 3s ease-in-out infinite; }
+  @keyframes latido { 50% { box-shadow:0 0 30px var(--azul); } }
+  h1 { margin:0; font-size:22px; letter-spacing:4px; font-weight:700; }
+  h1 span { color:var(--oro); }
+  .sub { color:var(--suave); font-size:13px; }
+  main { display:grid; gap:14px; padding:10px 16px 28px; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); max-width:1300px; margin:0 auto; }
+  .card { background:linear-gradient(180deg, #101b2f, var(--tarjeta)); border:1px solid var(--borde); border-radius:14px; padding:14px 16px; }
+  .card h2 { margin:0 0 10px; font-size:13px; letter-spacing:2px; text-transform:uppercase; color:var(--azul); }
+  .ancha { grid-column:1 / -1; }
+  .partes { display:grid; gap:8px; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); }
+  .parte { display:flex; gap:10px; align-items:flex-start; padding:9px 10px; border:1px solid var(--borde); border-radius:10px; background:#0b1322; }
+  .luz { width:12px; height:12px; border-radius:50%; margin-top:4px; flex:none; background:var(--gris); }
+  .luz.ok { background:var(--ok); box-shadow:0 0 10px var(--ok); }
+  .luz.mal { background:var(--mal); box-shadow:0 0 10px var(--mal); }
+  .parte b { display:block; font-size:14px; }
+  .parte small { color:var(--suave); font-size:12px; word-break:break-word; }
+  .cifra { font-size:28px; font-weight:700; color:var(--oro); }
+  .barra { height:8px; border-radius:6px; background:#1a2740; overflow:hidden; margin:6px 0 4px; }
+  .barra i { display:block; height:100%; background:linear-gradient(90deg, var(--azul), var(--oro)); }
+  ul { list-style:none; padding:0; margin:0; }
+  li { padding:6px 0; border-bottom:1px dashed #1a2740; font-size:14px; }
+  li:last-child { border-bottom:0; }
+  .hora { color:var(--oro); font-variant-numeric:tabular-nums; margin-right:6px; font-size:12px; }
+  .quien { color:var(--azul); font-size:12px; margin-right:6px; }
+  .habs { display:grid; gap:10px; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); }
+  .hab { border:1px solid var(--borde); border-radius:10px; padding:10px; background:#0b1322; }
+  .hab b { color:var(--oro); font-size:13px; }
+  .frases { margin-top:6px; display:flex; flex-wrap:wrap; gap:5px; }
+  .frase { font-size:12px; padding:3px 8px; border-radius:20px; border:1px solid #1f3a5f; color:#bfe6ff; background:#0a2036; }
+  .vacio { color:var(--suave); font-size:13px; }
+  .pc { display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; text-align:center; }
+  .pc div { background:#0b1322; border:1px solid var(--borde); border-radius:10px; padding:8px 4px; }
+  .pc b { display:block; font-size:20px; color:var(--oro); }
+  .pc small { color:var(--suave); font-size:11px; }
+  .error { color:var(--mal); padding:0 20px; }
+  .agentes { display:grid; gap:12px; grid-template-columns:repeat(auto-fill, minmax(165px, 1fr)); }
+  .agente { cursor:pointer; text-align:center; padding:14px 10px 12px; border:1px solid var(--borde); border-radius:14px;
+            background:linear-gradient(180deg, #0f1c33, #0a1220); transition:transform .15s, border-color .15s; }
+  .agente:hover { transform:translateY(-3px); border-color:var(--azul); }
+  .foto { width:96px; height:96px; margin:0 auto 8px; display:block; }
+  .foto.trabaja { animation:pulso 1.6s ease-in-out infinite; }
+  @keyframes pulso { 50% { filter:drop-shadow(0 0 12px var(--oro)); } }
+  .agente b { display:block; font-size:15px; }
+  .estado { font-size:12px; margin:4px 0; }
+  .estado.ok { color:var(--ok); } .estado.mal { color:var(--mal); } .estado.va { color:var(--oro); }
+  .agente .ahora { font-size:12px; color:var(--texto); min-height:32px; }
+  .agente .ult { font-size:11px; color:var(--suave); margin-top:4px; max-height:30px; overflow:hidden; }
+  .modal { position:fixed; inset:0; background:rgba(2,6,14,.78); display:none; align-items:center; justify-content:center; z-index:9; padding:12px; }
+  .modal.abierto { display:flex; }
+  .chat { width:min(620px, 100%); max-height:92vh; display:flex; flex-direction:column; background:#0b1424; border:1px solid var(--borde);
+          border-radius:16px; overflow:hidden; }
+  .chat header { padding:12px 14px; border-bottom:1px solid var(--borde); gap:12px; }
+  .chat header .foto { width:54px; height:54px; margin:0; }
+  .chat .cerrar { margin-left:auto; background:none; border:0; color:var(--suave); font-size:24px; cursor:pointer; }
+  .mensajes { flex:1; overflow-y:auto; padding:12px 14px; display:flex; flex-direction:column; gap:8px; min-height:200px; }
+  .msg { max-width:85%; padding:8px 11px; border-radius:12px; font-size:14px; white-space:pre-wrap; word-break:break-word; }
+  .msg.yo { align-self:flex-end; background:#123a5c; border:1px solid #1f5a8a; }
+  .msg.el { align-self:flex-start; background:#121c2e; border:1px solid var(--borde); }
+  .msg small { display:block; color:var(--suave); font-size:10px; margin-top:3px; }
+  .ejemplos { padding:0 14px 8px; display:flex; flex-wrap:wrap; gap:6px; }
+  .ejemplos .frase { cursor:pointer; }
+  .escribir { display:flex; gap:8px; padding:10px 14px 14px; border-top:1px solid var(--borde); }
+  .escribir textarea { flex:1; resize:none; height:46px; background:#08101d; color:var(--texto); border:1px solid var(--borde);
+                       border-radius:10px; padding:10px; font:inherit; }
+  .escribir button { background:linear-gradient(135deg, var(--azul), #0a6fd6); color:#fff; border:0; border-radius:10px; padding:0 16px;
+                     font-weight:700; cursor:pointer; }
+  .escribir button:disabled { opacity:.5; }
+  .rm { display:flex; gap:10px; align-items:flex-start; }
+  .rm button { flex:none; background:#0a2036; border:1px solid #1f5a8a; color:#bfe6ff; border-radius:8px; padding:3px 9px; cursor:pointer; font-size:12px; }
+  .rm .etq { font-size:11px; padding:1px 7px; border-radius:10px; margin-right:6px; }
+  .etq.pendiente { background:#3a2a00; color:var(--oro); } .etq.propuesta { background:#1f2c00; color:#b8e986; } .etq.hecho { background:#06301a; color:var(--ok); }
+  .rm.hecho span.t { text-decoration:line-through; color:var(--suave); }
+  .rm small { display:block; color:var(--suave); font-size:11px; }
+  .boton { margin-left:auto; text-decoration:none; color:#fff; background:linear-gradient(135deg, var(--azul), #7a5cff);
+           padding:9px 14px; border-radius:10px; font-weight:700; font-size:14px; white-space:nowrap; }
+  @media (max-width:480px) { h1 { font-size:18px; } .pc b { font-size:17px; } main { padding:8px 10px 24px; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="reactor"></div>
+  <div><h1>J.A.R.V.I.S. <span>·</span> PANEL</h1><div class="sub" id="sub">Conectando…</div></div>
+  <a id="cerebro" class="boton" target="_blank" rel="noopener">🧠 Mapa del cerebro</a>
+</header>
+<div class="error" id="error"></div>
+<main>
+  <section class="card ancha"><h2>Mis agentes · toque uno para darle una tarea</h2><div class="agentes" id="agentes"></div></section>
+  <section class="card ancha"><h2>Partes de JARVIS</h2><div class="partes" id="partes"></div></section>
+  <section class="card"><h2>Gasto de IA hoy</h2><div class="cifra" id="gasto">—</div><div class="barra"><i id="barra" style="width:0"></i></div><small class="sub" id="tope"></small></section>
+  <section class="card"><h2>El PC ahora</h2><div class="pc" id="pc"></div><div class="sub" id="pcextra" style="margin-top:8px"></div></section>
+  <section class="card"><h2>Recordatorios</h2><ul id="recs"></ul></section>
+  <section class="card"><h2>Lista de la compra</h2><ul id="compra"></ul></section>
+  <section class="card"><h2>Lo último que le he hecho</h2><ul id="ordenes"></ul></section>
+  <section class="card"><h2>Actividad del equipo</h2><ul id="equipo"></ul></section>
+  <section class="card"><h2>Lo que oye la voz del PC</h2><ul id="voz"></ul></section>
+  <section class="card ancha"><h2 id="rmtit">Por implementar</h2>
+    <div class="escribir" style="padding:0 0 10px;border:0"><textarea id="rmtexto" placeholder="Añadir algo que falta por implementar… (o dígalo: «añade X a lo que falta por implementar»)"></textarea><button id="rmadd">Añadir</button></div>
+    <ul id="roadmap"></ul></section>
+  <section class="card ancha"><h2 id="habtit">Habilidades</h2><div class="habs" id="habs"></div></section>
+</main>
+<div class="modal" id="modal"><div class="chat">
+  <header><span id="cfoto"></span><div><b id="cnombre"></b><div class="sub" id="cpapel"></div></div><button class="cerrar" id="cerrar" aria-label="Cerrar">✕</button></header>
+  <div class="mensajes" id="mensajes"></div>
+  <div class="ejemplos" id="ejemplos"></div>
+  <div class="escribir"><textarea id="texto" placeholder="Escriba la tarea para este agente…"></textarea><button id="enviar">Enviar</button></div>
+</div></div>
+<script>
+const k = new URLSearchParams(location.search).get("k") || "";
+const $ = id => document.getElementById(id);
+document.getElementById("cerebro").href = `/cerebro?k=${encodeURIComponent(k)}`;
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const lista = (el, items, f, vacio) => { el.innerHTML = items && items.length ? items.map(f).join("") : `<li class="vacio">${vacio}</li>`; };
+async function refresca() {
+  try {
+    const r = await fetch(`/api/estado?k=${encodeURIComponent(k)}`, {cache: "no-store"});
+    if (!r.ok) throw new Error(r.status === 403 ? "Sin permiso: falta la clave en la dirección." : "Error " + r.status);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    $("error").textContent = "";
+    if (d.agentes && !(abierto && $("enviar").disabled)) {
+      const primera = !AG.length; AG = d.agentes; pintaAgentes();
+      const h = location.hash.match(/^#chat=(\w+)/); if (primera && h) abre(h[1]);    // enlace directo al chat de un agente
+    }
+    const bien = d.partes.filter(p => p.ok).length;
+    $("sub").textContent = `${bien} de ${d.partes.length} partes funcionando · actualizado ${d.hora}`;
+    $("partes").innerHTML = d.partes.map(p => `<div class="parte"><span class="luz ${p.ok ? "ok" : "mal"}"></span><div><b>${esc(p.nombre)}</b><small>${esc(p.detalle)}</small></div></div>`).join("");
+    $("gasto").textContent = `$${d.gasto.toFixed(3)}`;
+    $("barra").style.width = Math.min(100, d.gasto / (d.tope || 0.5) * 100) + "%";
+    $("tope").textContent = `de un tope diario de $${(d.tope || 0.5).toFixed(2)}`;
+    const pc = d.pc || {};
+    const v = x => (x === null || x === undefined) ? "—" : x;
+    $("pc").innerHTML = `<div><b>${v(pc.cpu)}°</b><small>procesador</small></div><div><b>${v(pc.gpu)}°</b><small>gráfica</small></div><div><b>${v(pc.ram)}%</b><small>memoria</small></div><div><b>${v(pc.disco)}</b><small>GB libres</small></div>`;
+    $("pcextra").textContent = [pc.musica ? `♪ ${pc.musica}` : "", pc.juego_min ? `🎮 hoy ${pc.juego_min} min de juego` : ""].filter(Boolean).join("   ·   ") || "";
+    lista($("recs"), d.recordatorios, r => `<li><span class="hora">${esc(r.cuando)}</span>${esc(r.texto)}</li>`, "No tiene recordatorios pendientes.");
+    lista($("compra"), d.compra, c => `<li>☐ ${esc(c)}</li>`, "La lista está vacía.");
+    lista($("ordenes"), d.ordenes, o => `<li><span class="hora">${esc(o.cuando)}</span><span class="quien">${esc(o.canal)}</span>«${esc(o.pidio)}» → ${esc(o.hizo)}</li>`, "Aún no hay órdenes registradas.");
+    lista($("equipo"), d.equipo, e => `<li><span class="hora">${esc(e.cuando)}</span><span class="quien">${esc(e.quien)}</span>${esc(e.que)}</li>`, "Sin actividad.");
+    lista($("voz"), (pc.voz || []).slice().reverse(), l => `<li>${esc(l)}</li>`, "El PC está apagado o no ha oído nada.");
+    const rm = d.roadmap || [];
+    $("rmtit").textContent = `Por implementar (${rm.filter(x => x.estado === "pendiente").length} pendientes · ${rm.filter(x => x.estado === "propuesta").length} propuestas · ${rm.filter(x => x.estado === "hecho").length} hechas)`;
+    if (document.activeElement !== $("rmtexto")) {}
+    lista($("roadmap"), rm, x => `<li class="rm ${x.estado}">${x.estado === "pendiente" ? `<button data-rm="${x.id}">✓ hecho</button>` : ""}<div><span class="etq ${x.estado}">${x.estado}</span><span class="t">${esc(x.texto)}</span><small>${esc(x.origen || "")} · ${esc(x.creado || "")}${x.hecho_en ? " · hecho " + esc(x.hecho_en) : ""}</small></div></li>`, "No queda nada por implementar.");
+    document.querySelectorAll("[data-rm]").forEach(b => b.onclick = () => rmPost({accion: "hecho", id: b.dataset.rm}));
+    $("habtit").textContent = `Habilidades (${d.habilidades.reduce((n, h) => n + Math.max(1, h.frases.length), 0)} órdenes en ${d.habilidades.length} grupos)`;
+    $("habs").innerHTML = d.habilidades.map(h => `<div class="hab"><b>${esc(h.titulo)}</b><div class="frases">${h.frases.length ? h.frases.map(f => `<span class="frase">«${esc(f)}»</span>`).join("") : `<span class="vacio">${esc(h.texto)}</span>`}</div></div>`).join("");
+  } catch (e) { $("error").textContent = "⚠ " + e.message; }
+}
+// ---- agentes: «foto» ilustrada en SVG (sin caras de personas), estado y chat
+let AG = [], abierto = null;
+function foto(a, cls = "") {
+  const anillo = !a.vivo ? "#ff4d5e" : a.trabajando ? "#ffc400" : a.color;
+  return `<svg class="foto ${cls} ${a.trabajando ? "trabaja" : ""}" viewBox="0 0 100 100" role="img" aria-label="${esc(a.nombre)}">
+    <defs><radialGradient id="g-${a.id}-${cls}" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#ffffff" stop-opacity=".35"/>
+      <stop offset=".45" stop-color="${a.color}" stop-opacity=".55"/><stop offset="1" stop-color="#06101f"/></radialGradient></defs>
+    <circle cx="50" cy="50" r="46" fill="url(#g-${a.id}-${cls})"/>
+    <circle cx="50" cy="50" r="46" fill="none" stroke="${anillo}" stroke-width="3.5"/>
+    <circle cx="50" cy="50" r="38" fill="none" stroke="${a.color}" stroke-opacity=".35" stroke-dasharray="3 5"/>
+    <text x="50" y="62" text-anchor="middle" font-size="36">${a.icono}</text></svg>`;
+}
+function pintaAgentes() {
+  $("agentes").innerHTML = AG.map(a => `<div class="agente" data-id="${a.id}">${foto(a)}<b>${esc(a.nombre)}</b>
+    <div class="estado ${!a.vivo ? "mal" : a.trabajando ? "va" : "ok"}">● ${!a.vivo ? "Caído / apagado" : a.trabajando ? "Trabajando" : "Activo"}</div>
+    <div class="ahora">${esc(a.ahora)}</div><div class="ult">${esc(a.ultimo || "")}</div></div>`).join("");
+  document.querySelectorAll(".agente").forEach(el => el.onclick = () => abre(el.dataset.id));
+  if (abierto) pintaChat();
+}
+function pintaChat() {
+  const a = AG.find(x => x.id === abierto); if (!a) return;
+  $("cfoto").innerHTML = foto(a, "mini"); $("cnombre").textContent = a.nombre; $("cpapel").textContent = a.papel + " · " + a.ahora;
+  const m = $("mensajes"), abajo = m.scrollHeight - m.scrollTop - m.clientHeight < 40;
+  m.innerHTML = (a.chat.length ? a.chat : [{de: a.id, texto: `Hola, señor. Soy ${a.nombre}. ¿Qué necesita?`, cuando: ""}])
+    .map(x => `<div class="msg ${x.de === "señor" ? "yo" : "el"}">${esc(x.texto)}<small>${esc(x.cuando)}</small></div>`).join("");
+  if (abajo) m.scrollTop = m.scrollHeight;
+  $("ejemplos").innerHTML = a.ejemplos.map(e => `<span class="frase">«${esc(e)}»</span>`).join("");
+  document.querySelectorAll("#ejemplos .frase").forEach(el => el.onclick = () => { $("texto").value = el.textContent.slice(1, -1); $("texto").focus(); });
+}
+function abre(id) { abierto = id; $("modal").classList.add("abierto"); pintaChat(); $("mensajes").scrollTop = 1e9; $("texto").focus(); }
+$("cerrar").onclick = () => { abierto = null; $("modal").classList.remove("abierto"); };
+document.addEventListener("keydown", e => { if (e.key === "Escape") $("cerrar").onclick(); });
+async function envia() {
+  const t = $("texto").value.trim(); if (!t || !abierto) return;
+  const a = AG.find(x => x.id === abierto);
+  a.chat.push({de: "señor", texto: t, cuando: "ahora"}, {de: a.id, texto: "…", cuando: ""}); pintaChat(); $("mensajes").scrollTop = 1e9;
+  $("texto").value = ""; $("enviar").disabled = true;
+  try {
+    const r = await fetch(`/api/chat?k=${encodeURIComponent(k)}`, {method: "POST", headers: {"Content-Type": "application/json", "X-Jarvis": "panel"},
+                                                                 body: JSON.stringify({agente: abierto, texto: t})});
+    const d = await r.json(); a.chat[a.chat.length - 1] = {de: a.id, texto: d.respuesta, cuando: "ahora"};
+  } catch (e) { a.chat[a.chat.length - 1] = {de: a.id, texto: "No he podido enviarlo: " + e.message, cuando: ""}; }
+  $("enviar").disabled = false; pintaChat(); $("mensajes").scrollTop = 1e9; refresca();
+}
+$("enviar").onclick = envia;
+async function rmPost(cuerpo) {
+  await fetch(`/api/roadmap?k=${encodeURIComponent(k)}`, {method: "POST", headers: {"Content-Type": "application/json", "X-Jarvis": "panel"}, body: JSON.stringify(cuerpo)});
+  refresca();
+}
+$("rmadd").onclick = () => { const t = $("rmtexto").value.trim(); if (t) { $("rmtexto").value = ""; rmPost({accion: "add", texto: t}); } };
+$("texto").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); envia(); } });
+refresca(); setInterval(refresca, 5000);
+</script>
+</body>
+</html>

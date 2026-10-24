@@ -90,7 +90,7 @@ def main(a):
                 vistos.add(n)
             print(f"populares: {len(d)} nombres recibidos")
     todos = []
-    for p in [x for x in a if not x.startswith("--")] + [os.path.join(CFG, f) for f in ("nombres_pc.txt", "juegos_ok.txt", "apps_ok.txt")]:
+    for p in [x for x in a if not x.startswith("--")] + [os.path.join(CFG, f) for f in ("nombres_pc.txt", "juegos_ok.txt", "apps_ok.txt", "juegos_pc.txt", "juegos_otros.txt")]:
         todos += nombres_de(p)
     falta, vis = [], set()
     for n in todos:

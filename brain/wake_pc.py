@@ -86,14 +86,15 @@ def send_packet(pkt):
 def ping_ok(ip):
     try:
         r = subprocess.run(
-            ["ping", "-n", "1", "-w", str(PING_TIMEOUT_MS), ip],
+            (["ping", "-n", "1", "-w", str(PING_TIMEOUT_MS), ip] if os.name == "nt"
+             else ["ping", "-c", "1", "-W", str(max(1, PING_TIMEOUT_MS // 1000)), ip]),
             capture_output=True, text=True, timeout=10)
         return r.returncode == 0
     except Exception:
         return False
 
 
-TCP_PORTS = (11434, 8765)
+TCP_PORTS = (22, 11434, 8765)  # 22 = SSH del PC Linux
 TCP_TIMEOUT_S = 3
 
 

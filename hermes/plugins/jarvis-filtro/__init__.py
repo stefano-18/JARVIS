@@ -22,8 +22,16 @@ CAPTURA_PY = os.path.join(HOME, "jarvis2/scripts/captura_tg.py")
 
 
 def _captura():
+    import time as _t  # arreglo 94: candado anti doble envio (20 s)
+    _lk = "/tmp/jarvis-captura.lock"
     try:
-        r = subprocess.run([VENV_PY, CAPTURA_PY, "Así están sus pantallas, señor."], capture_output=True, text=True, timeout=90)
+        if os.path.exists(_lk) and _t.time() - os.path.getmtime(_lk) < 20:
+            return {"action": "handled", "reply": "Ya se la estoy mandando, señor."}
+        open(_lk, "w").close()
+    except OSError:
+        pass
+    try:
+        r = subprocess.run([VENV_PY, CAPTURA_PY, "Así están sus pantallas, señor."], capture_output=True, text=True, timeout=150)
         out = ((r.stdout or "").strip().splitlines() or [""])[-1]
     except Exception as e:  # noqa: BLE001
         out = f"No he podido sacar la captura ({str(e)[:80]})."
@@ -125,6 +133,57 @@ def _puente(text, chat, msg):
     raise RuntimeError("el puente no contesto")
 
 
+_ACCION_RE = re.compile(r"\b(abre|abrir|cierra|cerrar|enciende|apaga|reinicia|suspende|bloquea|manda|env[ii]a|pon|ponme|sube|baja|instala|actualiza|descarga|borra|elimina|desinstala|recuerda|recuerdame|recordatorio|alarma|temporizador|captura|pantallazo|foto|lee|leeme|resume|busca|buscame|investiga|averigua|vigila|compra|juego|juegos|steam|epic|archivo|carpeta|volumen|correo|gmail|calendario|cita|web|youtube|navegador|chrome|brave|ssh|ejecuta|corre|programa|codigo|repo|github)\b", re.I)
+_CHARLA_RE = re.compile(r"^\s*(hola|buenas|buenos|gracias|ok|vale|que tal|que|como|por que|porque|quien|cuando|cuanto|cual|dime|explicame|sabes|crees|opinas)\b", re.I)
+
+
+def _charla_simple(text):  # arreglo 99
+    t = _plano(text)
+    if len(text) > 200 or _ACCION_RE.search(t):
+        return False
+    return bool(_CHARLA_RE.match(t) or text.strip().endswith("?"))
+
+
+def _charla_rapida(text):  # arreglo 99
+    try:
+        import sys as _s
+        d = os.path.join(HOME, "jarvis2/scripts")
+        if d not in _s.path:
+            _s.path.insert(0, d)
+        import jx
+        sys_p = ("Eres JARVIS, el mayordomo de {{NOMBRE}}. Hablas en espanol y le llamas senor. "
+                 "Responde en 1 a 3 frases cortas y naturales, sin listas ni codigo. Si te piden HACER "
+                 "algo en el PC o el portatil (abrir, cerrar, buscar, mandar, archivos, etc.) no lo inventes: "
+                 "responde solo la palabra ACCION.")
+        ctx = _obsidian(text, 900, 2)
+        r = jx.haiku(sys_p, (ctx + "\n\n" + text) if ctx else text, max_tokens=200, quien="mayordomo")
+        if not r or r.strip().upper().replace("O", "O").startswith("ACCION"):
+            return None
+        return r
+    except Exception as e:  # noqa: BLE001
+        log.warning("jarvis-filtro: charla rapida fallo (%s)", e)
+        return None
+
+
+def _obsidian(text, max_chars=1500, top_k=4):
+    """Context Manager de Obsidian: solo los trozos de nota relevantes a este mensaje (o "")."""
+    try:
+        import sys as _s
+        d = os.path.join(HOME, "jarvis2/scripts")
+        if d not in _s.path:
+            _s.path.insert(0, d)
+        import jx_obsidian
+        return jx_obsidian.contexto(text or "", max_chars=max_chars, top_k=top_k)
+    except Exception as e:  # noqa: BLE001
+        log.warning("jarvis-filtro: obsidian fallo (%s)", type(e).__name__)
+        return ""
+
+
+def contexto_obsidian(user_message=None, **kw):
+    c = _obsidian(user_message or "")
+    return {"context": c} if c else None
+
+
 def consume(session_key=None, platform=None, source=None, message_id=None, text=None, **kw):
     if platform != "telegram" or not text:
         return None
@@ -138,6 +197,10 @@ def consume(session_key=None, platform=None, source=None, message_id=None, text=
         r = _jx_local(text)
         if r:
             return {"action": "handled", "reply": r}
+    if not clave and _charla_simple(text):  # arreglo 99
+        rc = _charla_rapida(text)
+        if rc:
+            return {"action": "handled", "reply": rc}
     try:
         res = _puente(text, chat, message_id)
     except Exception as e:  # noqa: BLE001
@@ -177,3 +240,4 @@ def guardia(tool_name=None, args=None, **kw):
 def register(ctx):
     ctx.register_hook("post_gateway_admission", consume)
     ctx.register_hook("pre_tool_call", guardia)
+    ctx.register_hook("pre_llm_call", contexto_obsidian)

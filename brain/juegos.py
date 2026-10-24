@@ -13,7 +13,8 @@ import json, os, re, sys, unicodedata, urllib.parse, urllib.request
 sys.path.insert(0, os.path.expanduser("~/jarvis2/scripts"))
 import pc_do  # noqa: E402
 
-DESTINOS = ["{{WIN_HOME_ESC}}\\" + c + "jarvis-juego.txt" for c in ("Documents\\", "Downloads\\", "Desktop\\", "JARVIS-backups\\", "OneDrive\\Documents\\", "")]
+# PC con Linux (Omarchy) primero; las rutas de Windows quedan por si vuelve Windows
+DESTINOS = ["{{HOME}}/Documents/jarvis-juego.txt"] + ["{{WIN_HOME_ESC}}\\" + c + "jarvis-juego.txt" for c in ("Documents\\", "Downloads\\", "Desktop\\", "JARVIS-backups\\", "OneDrive\\Documents\\", "")]
 
 
 def plano(t):

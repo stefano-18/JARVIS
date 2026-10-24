@@ -36,7 +36,7 @@ except Exception:  # noqa: BLE001
 GAME_FILE = _JROOT / "data" / "game_mode.json"
 USE_FILE = _JROOT / "data" / "pc_ai_use.json"
 HIGH = {"system.shutdown", "system.restart", "system.lock", "suspend.pc",
-        "shell.exec"}
+        "system.suspend", "shell.exec"}
 
 
 def load_env():
@@ -101,7 +101,7 @@ def _tcp_ok(ip, port, timeout=3) -> bool:
 
 def _ping_ok(ip) -> bool:
     try:
-        r = subprocess.run(["ping", "-n", "1", "-w", "1000", ip],
+        r = subprocess.run((["ping", "-n", "1", "-w", "1000", ip] if os.name == "nt" else ["ping", "-c", "1", "-W", "1", ip]),
                            capture_output=True, timeout=10,
                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         return r.returncode == 0
@@ -109,9 +109,20 @@ def _ping_ok(ip) -> bool:
         return False
 
 
+def _agente_conectado() -> bool:
+    # arreglo 89: el agente del PC conectado al hub (puerto 18765) = listo para órdenes
+    try:
+        r = subprocess.run(["ss", "-tnH", "state", "established", "( sport = :18765 )"], capture_output=True, text=True, timeout=5)
+        return PC_IP in r.stdout
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def pc_awake() -> bool:
-    return (_ping_ok(PC_IP) or _tcp_ok(PC_IP, 18765, 2)
-            or _tcp_ok(PC_IP, 11434, 2))
+    # arreglo 95: el agente conectado al hub es la senal fiable; ping lo bloquea
+    # el cortafuegos de Windows y el PC no escucha en 18765 (el hub es el portatil).
+    return (_agente_conectado() or _ping_ok(PC_IP)
+            or _tcp_ok(PC_IP, 18765, 2) or _tcp_ok(PC_IP, 11434, 2))
 
 
 def wol_send() -> int:
@@ -233,12 +244,20 @@ def main(argv) -> int:
         print("uso: pc_do.py status|open|close|lock|suspend|shutdown|restart|sendfile|wol|ensure-awake|game|idle-check [--yes]")
         return 2
     cmd = args[0].lower()
-    if cmd in ("open", "close", "lock", "sendfile") and not pc_awake():  # mejora 17: WOL automatico
+    if cmd in ("open", "close", "lock", "sendfile", "web") and not pc_awake():  # mejora 17: WOL automatico
         r = ensure_awake(120)
         if r.get("status") != "ok":
             print(f"El PC está apagado y no ha respondido al encenderlo, señor ({r.get('error')}).")
             return 1
         print("Encendiendo el PC primero, señor.")
+    if cmd in ("open", "close", "lock", "sendfile", "web"):  # arreglo 89: esperar a que el agente del PC conecte
+        for _ in range(60):
+            if _agente_conectado():
+                break
+            time.sleep(2)
+        else:
+            print("El PC está encendido pero su agente aún no responde, señor. Inténtelo en un minuto.")
+            return 1
 
     if cmd == "status":
         st = asyncio.run(_status())
@@ -258,6 +277,10 @@ def main(argv) -> int:
     if cmd == "game" and len(args) > 1 and args[1] in ("on", "off"):
         on = args[1] == "on"
         set_game(on)
+        try:  # PC con Linux: avisos en silencio + rendimiento, y al terminar lo restaura
+            run("game.mode", {"on": on}, timeout=20)
+        except Exception:  # noqa: BLE001
+            pass
         if on:
             stopped = []
             for m in ollama_models_pc():
@@ -277,13 +300,7 @@ def main(argv) -> int:
         if (u.get("woken_by_planb")
                 and time.time() - int(u.get("last_use", 0)) > 1800
                 and pc_awake()):
-            rr = run("shell.exec",
-                     {"cmd": "powershell",
-                      "args": ["-NoProfile", "-Command",
-                               "Add-Type -AssemblyName System.Windows.Forms; "
-                               "[System.Windows.Forms.Application]::"
-                               "SetSuspendState('Suspend',$false,$false)"]},
-                     timeout=30)
+            rr = run("system.suspend", {}, timeout=30)  # vale en Windows y en Linux
             if rr.get("status") == "ok":
                 stamp_use(False)
                 print("plan B: PC suspendido por inactividad (30 min)")
@@ -296,7 +313,12 @@ def main(argv) -> int:
     if cmd == "open" and len(args) > 1:
         rr = run("apps.open", {"app": " ".join(args[1:])}, timeout=20)
     elif cmd == "close" and len(args) > 1:
-        rr = run("apps.close", {"app": " ".join(args[1:])}, timeout=20)
+        _app = " ".join(args[1:])
+        rr = run("apps.close", {"app": _app}, timeout=20)
+        if isinstance(rr, dict) and rr.get("code") in ("app_not_allowed", "not_owned", "already_gone"):
+            rr = run("apps.close_window", {"app": _app}, timeout=25)  # arreglo 93
+    elif cmd == "web" and len(args) > 1:  # arreglo 97
+        rr = run("web.open", {"url": args[1]}, timeout=15)
     elif cmd == "lock":
         rr = run("system.lock", {}, timeout=30)
     elif cmd in ("suspend", "shutdown", "restart"):
@@ -306,13 +328,7 @@ def main(argv) -> int:
         if cmd == "suspend":
             # shutdown /h exige hibernacion (off en el PC): suspender via
             # SetSuspendState con grant de params exactos (Fase 5).
-            rr = run("shell.exec",
-                     {"cmd": "powershell",
-                      "args": ["-NoProfile", "-Command",
-                               "Add-Type -AssemblyName System.Windows.Forms; "
-                               "[System.Windows.Forms.Application]::"
-                               "SetSuspendState('Suspend',$false,$false)"]},
-                     timeout=30)
+            rr = run("system.suspend", {}, timeout=30)  # vale en Windows y en Linux
             if rr.get("code") == "timeout" and not pc_awake():
                 rr = {"status": "ok", "note": "sin respuesta: PC dormido"}
         elif cmd == "shutdown":
@@ -356,7 +372,8 @@ async def _status():
     devs = (st.get("devices") or []) if isinstance(st, dict) else []
     return {"status": "ok" if DEVICE in devs else "degraded",
             "hub": "up", "pc": DEVICE if DEVICE in devs else "desconectado",
-            "ping": _ping_ok(PC_IP), "game_mode": game_on()}
+            "ping": _ping_ok(PC_IP), "awake": pc_awake(), "agente": _agente_conectado(), "game_mode": game_on(),
+            "nota": "el ping puede fallar por el cortafuegos de Windows: vale awake/agente"}  # arreglo 89
 
 
 if __name__ == "__main__":

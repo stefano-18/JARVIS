@@ -33,7 +33,7 @@ Sistema en dos nodos:
 ### Laptop
 
 ```powershell
-cd C:\Users\TuUsuario\jarvis-server
+cd C:\Users\<usuario>\jarvis-server
 Set-ExecutionPolicy -Scope Process Bypass
 .\install_laptop.ps1
 ```
@@ -50,7 +50,7 @@ PC_FIXED_MAC=AA:BB:CC:DD:EE:FF
 ### PC fijo
 
 ```powershell
-cd C:\Users\TuUsuario\jarvis-ui
+cd C:\Users\<usuario>\jarvis-ui
 Set-ExecutionPolicy -Scope Process Bypass
 .\install_pc.ps1
 ```

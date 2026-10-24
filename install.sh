@@ -30,6 +30,9 @@ T="$(mktemp -d)"
 haz "cp -r '$R/brain' '$R/hermes' '$R/services' '$T/'"
 haz "python3 '$R/tools/rellenar.py' '$T'"
 
+echo "== Gancho pre-commit (bloquea commits con claves o datos personales)"
+[ -d "$R/.git" ] && haz "cp '$R/tools/pre-commit' '$R/.git/hooks/pre-commit' && chmod +x '$R/.git/hooks/pre-commit'"
+
 echo "== Cerebro y entorno de Python"
 haz "mkdir -p '$S' '$CFG' '$U' '$HOME/tareas/auditoria' '$HOME/jarvis-equipo' '$HOME/backups'"
 haz "rsync -a '$T/brain/' '$S/'"
